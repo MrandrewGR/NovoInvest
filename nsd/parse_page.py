@@ -213,7 +213,7 @@ def load_urls(file_path):
     return []
 
 
-def save_progress(all_results, output_file='all_results.json'):
+def save_progress(all_results, output_file):
     """
     Сохраняет собранные результаты в JSON-файл.
     """
@@ -229,7 +229,7 @@ def main():
     """
     Основная функция для выполнения парсинга всех URL.
     """
-    urls = load_urls('extracted_links.json')
+    urls = load_urls(EXTRACTED_LINKS_FILE)
     if not urls:
         logging.error("Нет URL для обработки.")
         return
@@ -243,12 +243,12 @@ def main():
     total = len(filtered_urls)
 
     # Проверка наличия существующего файла с результатами для продолжения
-    if os.path.exists('all_results.json'):
+    if os.path.exists(ALL_RESULTS_FILE):
         try:
-            with open('all_results.json', 'r', encoding='utf-8') as f:
+            with open(ALL_RESULTS_FILE, 'r', encoding='utf-8') as f:
                 all_results = json.load(f)
             processed_count = len(all_results)
-            logging.info(f"Загружено {processed_count} уже обработанных URL из all_results.json")
+            logging.info(f"Загружено {processed_count} уже обработанных URL из {ALL_RESULTS_FILE}")
         except Exception as e:
             error_logger.error(f"Не удалось загрузить существующие результаты: {e}")
 
@@ -266,16 +266,20 @@ def main():
 
         # Сохранение прогресса каждые 100 обработанных URL
         if processed_count % 100 == 0:
-            save_progress(all_results)
+            save_progress(all_results, ALL_RESULTS_FILE)
             logging.info(f"Сохранено {processed_count} результатов.")
 
         # Введение увеличенной случайной задержки
         time.sleep(random.uniform(5, 10))
 
     # Сохранение окончательных результатов
-    save_progress(all_results)
+    save_progress(all_results, ALL_RESULTS_FILE)
     print("Обработка завершена. Проверьте 'all_results.json' для вывода.")
 
 
 if __name__ == "__main__":
     main()
+
+# Константы для путей и других конфигураций
+EXTRACTED_LINKS_FILE = 'extracted_links.json'
+ALL_RESULTS_FILE = 'all_results.json'

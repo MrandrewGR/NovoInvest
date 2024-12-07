@@ -102,7 +102,7 @@ def parse_corporate_action_info(url):
 
 # Пример использования:
 if __name__ == "__main__":
-    url = "https://nsddata.ru/ru/news/view/1202508"  # или любая страница со схожей структурой
+    url = "https://nsddata.ru/ru/news/view/1132181"  # или любая страница со схожей структурой
     result = parse_corporate_action_info(url)
 
     # Сохраняем результаты в файл JSON
@@ -110,4 +110,3 @@ if __name__ == "__main__":
         json.dump(result, f, ensure_ascii=False, indent=4)
 
     print("Результаты успешно сохранены в файл results.json")
-

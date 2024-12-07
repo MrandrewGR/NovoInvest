@@ -164,3 +164,5 @@ cython_debug/
 .idea/NovoInvest.iml
 .idea/vcs.xml
 results.json
+extracted_links.json
+extracted_links.csv

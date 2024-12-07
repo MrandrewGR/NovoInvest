@@ -276,10 +276,9 @@ def main():
     save_progress(all_results, ALL_RESULTS_FILE)
     print("Обработка завершена. Проверьте 'all_results.json' для вывода.")
 
+# Константы для путей и других конфигураций
+EXTRACTED_LINKS_FILE = '../tg/tgUserBot/extracted_links.json'
+ALL_RESULTS_FILE = 'all_results.json'
 
 if __name__ == "__main__":
     main()
-
-# Константы для путей и других конфигураций
-EXTRACTED_LINKS_FILE = 'extracted_links.json'
-ALL_RESULTS_FILE = 'all_results.json'

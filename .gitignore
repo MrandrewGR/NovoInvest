@@ -166,3 +166,6 @@ cython_debug/
 results.json
 extracted_links.json
 extracted_links.csv
+/downloaded_html
+/parsed_data
+/nsd/archive

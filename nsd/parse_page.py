@@ -6,7 +6,8 @@ import random
 import logging
 import os
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
+import heapq
 
 # Конфигурация основного логирования
 logging.basicConfig(
@@ -46,120 +47,104 @@ session.headers.update(HEADERS)
 
 def parse_table(table):
     """
-    Парсит таблицу и возвращает название таблицы и её данные.
+    Парсит таблицу и возвращает название таблицы, заголовки и данные.
+    Поддерживаются разные паттерны для извлечения названия таблицы.
     """
-    thead = table.find('thead')
-    tbody = table.find('tbody')
-    if not thead or not tbody:
-        return None, None
+    # Попытка найти название таблицы
+    table_title = "Без названия"
 
-    # Извлечение заголовка таблицы
-    title_row = thead.find_all('tr')[0]
-    title_text = title_row.get_text(strip=True)
-
-    rows = tbody.find_all('tr', recursive=False)
-    if not rows:
-        return title_text, []
-
-    first_row_cells = rows[0].find_all('td', recursive=False)
-    if len(first_row_cells) == 2:
-        # Формат ключ-значение
-        data = {}
-        for row in rows:
-            cells = row.find_all('td', recursive=False)
-            if len(cells) == 2:
-                key = cells[0].get_text(strip=True)
-                value = cells[1].get_text(strip=True)
-                data[key] = value
-        return title_text, data
+    # 1. Проверка наличия <caption>
+    caption = table.find('caption')
+    if caption and caption.get_text(strip=True):
+        table_title = caption.get_text(strip=True)
     else:
-        # Формат таблицы со строками и столбцами
+        # 2. Проверка заголовков в <th> с colspan
+        thead = table.find('thead')
+        if thead:
+            # Ищем строку с заголовком таблицы
+            header_row = thead.find('tr')
+            if header_row:
+                th_colspan = header_row.find('th', colspan=True)
+                if th_colspan and th_colspan.get_text(strip=True):
+                    table_title = th_colspan.get_text(strip=True)
+        else:
+            # 3. Проверка первых строк таблицы на наличие <p><strong>
+            first_tr = table.find('tr')
+            if first_tr:
+                p_tag = first_tr.find('p')
+                if p_tag:
+                    strong_tag = p_tag.find('strong')
+                    if strong_tag and strong_tag.get_text(strip=True):
+                        table_title = strong_tag.get_text(strip=True)
+
+    # Извлечение заголовков столбцов
+    headers = []
+    thead = table.find('thead')
+    if thead:
         header_rows = thead.find_all('tr')
-        headers = []
-        for header_row in header_rows:
-            ths = header_row.find_all('th')
-            # Если в заголовке есть colspan, нужно аккуратно их обработать,
-            # но в данном случае предполагаем прямолинейную структуру
-            if ths:
-                headers = [th.get_text(strip=True) for th in ths if th.get_text(strip=True)]
+        for row in header_rows:
+            th_tags = row.find_all('th')
+            for th in th_tags:
+                header_text = th.get_text(strip=True)
+                if header_text:
+                    headers.append(header_text)
+    else:
+        # Попытка извлечь заголовки из первого ряда таблицы
+        first_tr = table.find('tr')
+        if first_tr:
+            th_tags = first_tr.find_all('th')
+            if th_tags:
+                for th in th_tags:
+                    header_text = th.get_text(strip=True)
+                    if header_text:
+                        headers.append(header_text)
 
-        if not headers:
-            return title_text, []  # Пропускаем таблицу без явных заголовков столбцов
+    # Если заголовки не найдены в <thead> или <th>, попробуем найти их в первом <tr> с <td>
+    if not headers:
+        first_tr = table.find('tr')
+        if first_tr:
+            th_tags = first_tr.find_all(['th', 'td'])
+            for th in th_tags:
+                header_text = th.get_text(strip=True)
+                if header_text:
+                    headers.append(header_text)
 
-        data = []
-        for row in rows:
-            cells = row.find_all('td', recursive=False)
-            # Пропускаем строки, если количество столбцов не совпадает
-            if len(cells) != len(headers):
-                continue
-            row_data = {}
-            for h, c in zip(headers, cells):
-                row_data[h] = c.get_text(strip=True)
+    # Извлечение данных таблицы
+    data = []
+    tbody = table.find('tbody')
+    if tbody:
+        rows = tbody.find_all('tr')
+    else:
+        # Если нет <tbody>, ищем все <tr> кроме первого, если оно содержит заголовки
+        all_tr = table.find_all('tr')
+        if headers and len(all_tr) > 1:
+            rows = all_tr[1:]
+        else:
+            rows = all_tr
+
+    for row in rows:
+        row_data = {}
+        cells = row.find_all(['td', 'th'])
+        for idx, cell in enumerate(cells):
+            cell_text = cell.get_text(strip=True)
+            if headers and idx < len(headers):
+                row_data[headers[idx]] = cell_text
+            else:
+                # Если заголовки отсутствуют или ячейка превышает количество заголовков
+                row_data[f"Column {idx+1}"] = cell_text
+        if row_data:
             data.append(row_data)
 
-        return title_text, data
-
-
-def extract_inn(title):
-    """
-    Извлекает ИНН из заголовка.
-    """
-    match = re.search(r'ИНН\s*(\d{10}|\d{12})', title)
-    if match:
-        return match.group(1)
-    return None
-
-
-def extract_isin(title):
-    """
-    Извлекает ISIN из заголовка.
-    """
-    match = re.search(r'\bISIN\s*[:\-]?\s*([A-Z]{2}[A-Z0-9]{10})\b', title, re.IGNORECASE)
-    if match:
-        return match.group(1)
-    return None
-
-
-def parse_all_tables(soup):
-    """
-    Парсит все таблицы на странице и возвращает словарь с данными.
-    Ключ - заголовок таблицы, значение - данные таблицы.
-    """
-    specific_tables = {}
-    tables = soup.find_all('table')
-    for table in tables:
-        t_title, t_data = parse_table(table)
-        if t_title and t_data is not None:
-            specific_tables[t_title] = t_data
-    return specific_tables
-
-
-def parse_corporate_action_info(soup):
-    """
-    Извлекает заголовок, ИНН, ISIN и парсит все таблицы.
-    """
-    # Извлечение заголовка
-    title_element = soup.find('h1', class_='disc-message-header')
-    title_text = title_element.get_text(strip=True) if title_element else None
-
-    # Извлечение ИНН и ISIN
-    inn = extract_inn(title_text) if title_text else None
-    isin = extract_isin(title_text) if title_text else None
-
-    # Парсинг всех таблиц
-    all_tables = parse_all_tables(soup)
-
     return {
-        "Заголовок": title_text,
-        "ИНН": inn,
-        "ISIN": isin,
-        **all_tables
+        "title": table_title,
+        "headers": headers,
+        "data": data
     }
-
 
 def parse_page(url, max_retries=3):
     """
     Основная функция для парсинга страницы.
+    Возвращает кортеж (успешно_разобран, список_таблиц, причина_неудачи).
     """
     retries = 0
     while retries < max_retries:
@@ -168,32 +153,36 @@ def parse_page(url, max_retries=3):
             response.raise_for_status()
             soup = BeautifulSoup(response.text, 'html.parser')
 
-            # Парсинг специфических данных
-            specific_data = parse_corporate_action_info(soup)
-
-            if not specific_data:
-                logging.warning(f"Не удалось извлечь специфические данные из {url}")
-                return None
-
-            logging.info(f"Успешно разобран {url}")
-            return specific_data
+            # Поиск всех таблиц на странице
+            tables = soup.find_all('table')
+            if tables:
+                parsed_tables = [parse_table(table) for table in tables]
+                table_titles = [t['title'] for t in parsed_tables]
+                logging.info(f"Успешно разобран {url} - найдено {len(tables)} таблиц: {', '.join(table_titles)}")
+                return True, parsed_tables, None
+            else:
+                logging.warning(f"Таблицы не найдены на странице {url}.")
+                return False, [], 'no_table'
         except requests.exceptions.HTTPError as http_err:
             error_logger.error(f"HTTP ошибка для {url}: {http_err}")
             if response.status_code == 403:
                 # Специфическая обработка 403 ошибки
                 error_logger.error(f"Доступ запрещён для {url}. Возможно, IP заблокирован.")
-                break  # Прекратить попытки для 403 ошибки
+                return False, [], '403'
+            else:
+                return False, [], 'http_error'
         except requests.exceptions.RequestException as req_err:
             error_logger.error(f"Ошибка запроса для {url}: {req_err}")
+            failure_reason = 'request_exception'
         except Exception as err:
             error_logger.error(f"Неожиданная ошибка для {url}: {err}")
+            failure_reason = 'unexpected_error'
 
         retries += 1
         logging.info(f"Повторная попытка {retries}/{max_retries} для {url}")
         time.sleep(random.uniform(5, 10))  # Увеличенная задержка между попытками
 
-    return None
-
+    return False, [], failure_reason
 
 def load_urls(file_path):
     """
@@ -212,7 +201,6 @@ def load_urls(file_path):
         error_logger.error(f"Ошибка при загрузке URL: {err}")
     return []
 
-
 def save_progress(all_results, output_file):
     """
     Сохраняет собранные результаты в JSON-файл.
@@ -223,7 +211,6 @@ def save_progress(all_results, output_file):
         logging.info(f"Результаты успешно сохранены в {output_file}")
     except Exception as err:
         error_logger.error(f"Ошибка при сохранении результатов: {err}")
-
 
 def main():
     """
@@ -242,6 +229,11 @@ def main():
     processed_count = 0
     total = len(filtered_urls)
 
+    # Очередь для повторной проверки (минимальная куча по времени повторной попытки)
+    retry_heap = []
+    # Словарь для отслеживания количества попыток
+    retry_counts = {}
+
     # Проверка наличия существующего файла с результатами для продолжения
     if os.path.exists(ALL_RESULTS_FILE):
         try:
@@ -258,18 +250,85 @@ def main():
             continue  # Пропускаем уже обработанные URL
 
         print(f"Обработка {processed_count + 1}/{total}: {u}")
-        result = parse_page(u)
-        processed_count += 1  # Увеличиваем счётчик независимо от успешности
+        success, parsed_tables, failure_reason = parse_page(u)
 
-        if result:
-            all_results[u] = result
+        if success:
+            all_results[u] = {
+                "status": "success",
+                "timestamp": datetime.now().isoformat(),
+                "tables": parsed_tables
+            }
+        else:
+            if failure_reason == '403':
+                logging.error(f"URL {u} вернул 403 ошибку. Добавление в очередь для повторной попытки через 5 минут.")
+                retry_time = datetime.now() + timedelta(minutes=5)
+                heapq.heappush(retry_heap, (retry_time, u))
+                retry_counts[u] = retry_counts.get(u, 0) + 1
+            elif failure_reason == 'no_table':
+                logging.warning(f"URL {u} не содержит таблиц. Добавление в очередь для повторной попытки через 5 минут.")
+                retry_time = datetime.now() + timedelta(minutes=5)
+                heapq.heappush(retry_heap, (retry_time, u))
+                retry_counts[u] = retry_counts.get(u, 0) + 1
+            else:
+                logging.warning(f"URL {u} не удалось обработать по причине: {failure_reason}. Пропуск или добавление в очередь при необходимости.")
+
+        processed_count += 1  # Увеличиваем счётчик независимо от успешности
 
         # Сохранение прогресса каждые 100 обработанных URL
         if processed_count % 100 == 0:
             save_progress(all_results, ALL_RESULTS_FILE)
             logging.info(f"Сохранено {processed_count} результатов.")
 
-        # Введение увеличенной случайной задержки
+        # Введение случайной задержки
+        time.sleep(random.uniform(5, 10))
+
+    # Обработка очереди для повторной проверки
+    while retry_heap:
+        current_time = datetime.now()
+        retry_time, u = heapq.heappop(retry_heap)
+
+        if current_time < retry_time:
+            # Ждём до момента, когда можно повторить попытку
+            wait_seconds = (retry_time - current_time).total_seconds()
+            logging.info(f"Ожидание {wait_seconds:.0f} секунд до повторной попытки для {u}")
+            time.sleep(wait_seconds)
+
+        current_retry = retry_counts.get(u, 0)
+
+        if current_retry > MAX_RETRIES:
+            logging.error(f"URL {u} превысил максимальное количество попыток ({MAX_RETRIES}). Пропуск.")
+            continue
+
+        print(f"Повторная обработка {processed_count + 1}/{total} (Попытка {current_retry}/{MAX_RETRIES}): {u}")
+        success, parsed_tables, failure_reason = parse_page(u)
+
+        if success:
+            all_results[u] = {
+                "status": "success",
+                "timestamp": datetime.now().isoformat(),
+                "tables": parsed_tables
+            }
+            logging.info(f"Успешно разобран {u} при повторной попытке.")
+        else:
+            if failure_reason in ['403', 'no_table']:
+                if current_retry < MAX_RETRIES:
+                    logging.warning(f"URL {u} не удалось обработать при повторной попытке по причине: {failure_reason}. Добавление в очередь для повторной попытки через 5 минут.")
+                    retry_time = datetime.now() + timedelta(minutes=5)
+                    heapq.heappush(retry_heap, (retry_time, u))
+                    retry_counts[u] += 1
+                else:
+                    logging.error(f"URL {u} достиг максимального количества попыток ({MAX_RETRIES}). Пропуск.")
+            else:
+                logging.warning(f"URL {u} не удалось обработать при повторной попытке по неизвестной причине: {failure_reason}. Пропуск.")
+
+        processed_count += 1  # Увеличиваем счётчик независимо от успешности
+
+        # Сохранение прогресса каждые 100 обработанных URL
+        if processed_count % 100 == 0:
+            save_progress(all_results, ALL_RESULTS_FILE)
+            logging.info(f"Сохранено {processed_count} результатов.")
+
+        # Введение случайной задержки
         time.sleep(random.uniform(5, 10))
 
     # Сохранение окончательных результатов
@@ -279,6 +338,7 @@ def main():
 # Константы для путей и других конфигураций
 EXTRACTED_LINKS_FILE = '../tg/tgUserBot/extracted_links.json'
 ALL_RESULTS_FILE = 'all_results.json'
+MAX_RETRIES = 3  # Максимальное количество повторных попыток для одного URL
 
 if __name__ == "__main__":
     main()

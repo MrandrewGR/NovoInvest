@@ -17,9 +17,9 @@ logging.basicConfig(
 )
 
 # Константы
-URLS_JSON_PATH = 'tg/tgUserBot/extracted_links.json'  # Путь к вашему JSON файлу со списком URL
-HTML_SAVE_DIR = 'downloaded_html'
-PARSED_SAVE_DIR = 'parsed_data'
+URLS_JSON_PATH = 'extracted_links.json'  # Путь к вашему JSON файлу со списком URL
+HTML_SAVE_DIR = '../../downloaded_html'
+PARSED_SAVE_DIR = '../../parsed_data'
 LOG_FILE = 'scraper.log'
 
 # Создание директорий для сохранения, если они не существуют

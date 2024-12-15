@@ -172,3 +172,5 @@ extracted_links.csv
 /tg/tgBot/inputs
 env
 env
+pdsf.py
+tests.ipynb

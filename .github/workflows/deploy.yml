@@ -41,7 +41,6 @@ jobs:
         run: |
           rsync -avz -e "ssh -i ~/.ssh/id_ed25519" --exclude '.git' --exclude '.github' ./ dev@${{ secrets.SSH_HOST }}:/home/dev/app/
 
-
       - name: Install Docker and Docker Compose on server
         run: |
           ssh -i ~/.ssh/id_ed25519 dev@${{ secrets.SSH_HOST }} "sudo apt-get update && sudo apt-get install -y ca-certificates curl gnupg lsb-release"
@@ -68,12 +67,10 @@ jobs:
           ssh -i ~/.ssh/id_ed25519 dev@${{ secrets.SSH_HOST }} "echo LOG_FILE=${{ secrets.LOG_FILE }} >> /home/dev/app/.env"
           ssh -i ~/.ssh/id_ed25519 dev@${{ secrets.SSH_HOST }} "echo MEDIA_DIR=${{ secrets.MEDIA_DIR }} >> /home/dev/app/.env"
 
-
-
       - name: Build and run docker-compose on server
         run: |
           ssh -i ~/.ssh/id_ed25519 dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose down"
-          ssh -i ~/.ssh/id_ed25519 dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose build"
+          ssh -i ~/.ssh/id_ed25519 dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose build --no-cache"
           ssh -i ~/.ssh/id_ed25519 dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose up -d"
 
       - name: Check Docker Compose Status

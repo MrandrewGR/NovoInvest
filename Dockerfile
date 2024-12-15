@@ -1,18 +1,18 @@
+# Используем базовый образ Python
 FROM python:3.10-slim
 
-# Установка зависимостей и netcat-openbsd
-WORKDIR /app
+# Установка зависимостей системы
+RUN apt-get update && apt-get install -y netcat-openbsd
+
+# Копирование требований и установка зависимостей Python
 COPY requirements.txt .
-RUN apt-get update && apt-get install -y netcat-openbsd && pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Копирование папки tg
 COPY tg /tg
-
-# Копирование файла сессии
-COPY session_name.session .
 
 # Установить рабочую директорию
 WORKDIR /tg/tgUserBot
 
 # Запуск бота
-CMD ["python3", "main.py"]
+CMD ["./wait-for-kafka.sh", "kafka", "9092", "python3", "main.py"]

@@ -58,7 +58,7 @@ jobs:
       - name: Add user to Docker group
         run: ssh -i ~/.ssh/id_ed25519 dev@${{ secrets.SSH_HOST }} "sudo usermod -aG docker dev"
 
-      # 10. Create .env file on the server with all necessary environment variables
+      # 10. Create .env file on server with all necessary environment variables
       - name: Create .env file on server
         run: |
           ssh -i ~/.ssh/id_ed25519 dev@${{ secrets.SSH_HOST }} "cat > /home/dev/app/.env <<EOF

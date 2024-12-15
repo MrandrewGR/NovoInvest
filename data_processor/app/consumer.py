@@ -4,8 +4,9 @@ import json
 import logging
 from kafka import KafkaConsumer
 from sqlalchemy.orm import Session
-from .database import SessionLocal, engine
+from database import SessionLocal, engine
 from data_processor.app.models import Base, TelegramMessage
+
 
 # Настройка логирования
 LOG_FILE = os.getenv("LOG_FILE", "/app/logs/data_processor.log")

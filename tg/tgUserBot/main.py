@@ -4,9 +4,9 @@ import signal
 import os
 from telethon import TelegramClient, events
 from telethon.errors import FloodWaitError
-from userbot.config import Config
-from userbot.kafka_producer import KafkaMessageProducer
-from userbot.utils import human_like_delay, ensure_dir
+from config import Config
+from kafka_producer import KafkaMessageProducer
+from utils import human_like_delay, ensure_dir
 
 # Настройка логирования
 logger = logging.getLogger(__name__)

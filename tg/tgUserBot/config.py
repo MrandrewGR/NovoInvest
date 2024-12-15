@@ -20,6 +20,6 @@ class Config:
     KAFKA_CHANNEL_TOPIC = os.environ.get("KAFKA_CHANNEL_TOPIC", "telegram_channel_messages")
     KAFKA_CHAT_TOPIC = os.environ.get("KAFKA_CHAT_TOPIC", "telegram_chat_messages")
 
-    LOG_FILE = os.environ.get("LOG_FILE", "logs/userbot.log")
+    LOG_FILE = os.environ.get("LOG_FILE", "/app/logs/userbot.log")
     LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
     MEDIA_DIR = os.environ.get("MEDIA_DIR", "media")

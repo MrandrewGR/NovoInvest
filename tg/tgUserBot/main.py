@@ -9,6 +9,10 @@ from kafka_producer import KafkaMessageProducer
 from utils import human_like_delay, ensure_dir
 
 # Настройка логирования
+log_dir = os.path.dirname(Config.LOG_FILE)
+if not os.path.exists(log_dir):
+    os.makedirs(log_dir, exist_ok=True)
+    
 logger = logging.getLogger(__name__)
 logging.basicConfig(
     filename=Config.LOG_FILE,

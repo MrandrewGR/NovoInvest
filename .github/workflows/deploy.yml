@@ -67,8 +67,8 @@ jobs:
 
       - name: Check Docker Compose Status
         run: |
-          ssh -t -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "docker compose ps"
+          ssh -t -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "cd /home/${{ secrets.SSH_USER }}/app && docker compose ps"
 
       - name: View Userbot Logs
         run: |
-          ssh -t -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "docker compose logs userbot --tail 50"
+          ssh -t -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "cd /home/${{ secrets.SSH_USER }}/app && docker compose logs userbot --tail 50"

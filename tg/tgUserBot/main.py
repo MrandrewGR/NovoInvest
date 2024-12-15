@@ -12,7 +12,7 @@ from utils import human_like_delay, ensure_dir
 log_dir = os.path.dirname(Config.LOG_FILE)
 if not os.path.exists(log_dir):
     os.makedirs(log_dir, exist_ok=True)
-    
+
 logger = logging.getLogger(__name__)
 logging.basicConfig(
     filename=Config.LOG_FILE,
@@ -118,8 +118,9 @@ async def run_userbot():
     me = await client.get_me()
     logger.info("Userbot started as: %s (ID: %s)", me.username, me.id)
 
-    # Запуск обработчиков
-    await client.run_until_disconnected()
+    # Запуск клиента до отключения
+    await asyncio.gather(client.run_until_disconnected(), shutdown_event.wait())
+
 
 # Обработчик сигналов завершения
 def shutdown_signal_handler(signum, frame):

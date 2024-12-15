@@ -4,7 +4,7 @@ import json
 import logging
 from kafka import KafkaConsumer
 from sqlalchemy.orm import Session
-from database import SessionLocal, engine
+from app.database import SessionLocal, engine
 from data_processor.app.models import Base, TelegramMessage
 
 

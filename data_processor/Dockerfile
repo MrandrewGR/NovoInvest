@@ -4,7 +4,7 @@
 FROM python:3.10-slim
 
 # Установка системных зависимостей
-RUN apt-get update && apt-get install -y gcc libpq-dev netcat
+RUN apt-get update && apt-get install -y gcc libpq-dev netcat-openbsd
 
 # Установка зависимостей Python
 COPY requirements.txt .

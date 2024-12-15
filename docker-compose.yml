@@ -37,7 +37,7 @@ services:
     volumes:
       - ./logs:/app/logs
       - ./media:/app/media
-      - ./tg:/tg  # Правильное монтирование папки tg
+      - ./tg:/tg  # Монтирование папки tg в контейнер
       - ./session_name.session:/app/session_name.session
-    working_dir: /tg/tgUserBot  # Установить рабочую директорию
-    command: python3 main.py  # Запуск main.py
+    working_dir: /tg/tgUserBot
+    command: python3 main.py

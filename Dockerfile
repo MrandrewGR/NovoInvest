@@ -6,7 +6,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Копирование папки tg
-COPY tg /tg  # Копирование папки tg в контейнер
+COPY tg /tg
 
 # Копирование файла сессии
 COPY session_name.session .

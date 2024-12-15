@@ -30,51 +30,45 @@ jobs:
         run: ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
 
       - name: Test SSH Connection
-        run: ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} 'echo "SSH connection established"'
+        run: ssh -t -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} 'echo "SSH connection established"'
 
       - name: Copy code to server
         run: |
-          rsync -avz -e "ssh -i ~/.ssh/id_rsa" --exclude '.git' --exclude '.github' ./ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/home/${{ secrets.SSH_USER }}/app/
+          rsync -avz -e "ssh -t -i ~/.ssh/id_rsa" --exclude '.git' --exclude '.github' ./ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/home/${{ secrets.SSH_USER }}/app/
 
       - name: Install Docker and Docker Compose on server
         run: |
-          ssh -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "sudo apt-get update && sudo apt-get install -y ca-certificates curl gnupg lsb-release"
-          ssh -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "sudo mkdir -p /etc/apt/keyrings"
-          ssh -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg"
-          ssh -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "echo \"deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable\" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null"
-          ssh -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "sudo apt-get update && sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin"
-          
-          # Установка Docker Compose как плагина
-          ssh -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "sudo mkdir -p /home/dev/.docker/cli-plugins/"
-          ssh -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "sudo chown -R dev:dev /home/dev/.docker/"
-          ssh -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "sudo -u dev curl -SL https://github.com/docker/compose/releases/download/v2.20.2/docker-compose-linux-x86_64 -o /home/dev/.docker/cli-plugins/docker-compose"
-          ssh -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "sudo -u dev chmod +x /home/dev/.docker/cli-plugins/docker-compose"
-          ssh -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "docker compose version"
+          ssh -t -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "sudo apt-get update && sudo apt-get install -y ca-certificates curl gnupg lsb-release"
+          ssh -t -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "sudo mkdir -p /home/dev/.docker/cli-plugins/"
+          ssh -t -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "sudo chown -R dev:dev /home/dev/.docker/"
+          ssh -t -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "sudo -u dev curl -SL https://github.com/docker/compose/releases/download/v2.20.2/docker-compose-linux-x86_64 -o /home/dev/.docker/cli-plugins/docker-compose"
+          ssh -t -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "sudo chmod +x /home/dev/.docker/cli-plugins/docker-compose"
+          ssh -t -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "docker compose version"
 
       - name: Add user to Docker group
-        run: ssh -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "sudo usermod -aG docker dev && newgrp docker"
+        run: ssh -t -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "sudo usermod -aG docker dev && newgrp docker"
 
       - name: Create .env file on server
         run: |
-          ssh -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "echo TELEGRAM_API_ID=${{ secrets.TELEGRAM_API_ID }} > /home/${{ secrets.SSH_USER }}/app/.env"
-          ssh -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "echo TELEGRAM_API_HASH=${{ secrets.TELEGRAM_API_HASH }} >> /home/${{ secrets.SSH_USER }}/app/.env"
-          ssh -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "echo TELEGRAM_PHONE=${{ secrets.TELEGRAM_PHONE }} >> /home/${{ secrets.SSH_USER }}/app/.env"
-          ssh -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "echo TELEGRAM_CHANNEL_ID=${{ secrets.TELEGRAM_CHANNEL_ID }} >> /home/${{ secrets.SSH_USER }}/app/.env"
-          ssh -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "echo TELEGRAM_CHAT_ID=${{ secrets.TELEGRAM_CHAT_ID }} >> /home/${{ secrets.SSH_USER }}/app/.env"
-          ssh -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "echo KAFKA_BOOTSTRAP_SERVERS=${{ secrets.KAFKA_BOOTSTRAP_SERVERS }} >> /home/${{ secrets.SSH_USER }}/app/.env"
-          ssh -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "echo KAFKA_CHANNEL_TOPIC=${{ secrets.KAFKA_CHANNEL_TOPIC }} >> /home/${{ secrets.SSH_USER }}/app/.env"
-          ssh -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "echo KAFKA_CHAT_TOPIC=${{ secrets.KAFKA_CHAT_TOPIC }} >> /home/${{ secrets.SSH_USER }}/app/.env"
+          ssh -t -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "echo TELEGRAM_API_ID=${{ secrets.TELEGRAM_API_ID }} > /home/${{ secrets.SSH_USER }}/app/.env"
+          ssh -t -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "echo TELEGRAM_API_HASH=${{ secrets.TELEGRAM_API_HASH }} >> /home/${{ secrets.SSH_USER }}/app/.env"
+          ssh -t -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "echo TELEGRAM_PHONE=${{ secrets.TELEGRAM_PHONE }} >> /home/${{ secrets.SSH_USER }}/app/.env"
+          ssh -t -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "echo TELEGRAM_CHANNEL_ID=${{ secrets.TELEGRAM_CHANNEL_ID }} >> /home/${{ secrets.SSH_USER }}/app/.env"
+          ssh -t -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "echo TELEGRAM_CHAT_ID=${{ secrets.TELEGRAM_CHAT_ID }} >> /home/${{ secrets.SSH_USER }}/app/.env"
+          ssh -t -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "echo KAFKA_BOOTSTRAP_SERVERS=${{ secrets.KAFKA_BOOTSTRAP_SERVERS }} >> /home/${{ secrets.SSH_USER }}/app/.env"
+          ssh -t -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "echo KAFKA_CHANNEL_TOPIC=${{ secrets.KAFKA_CHANNEL_TOPIC }} >> /home/${{ secrets.SSH_USER }}/app/.env"
+          ssh -t -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "echo KAFKA_CHAT_TOPIC=${{ secrets.KAFKA_CHAT_TOPIC }} >> /home/${{ secrets.SSH_USER }}/app/.env"
 
       - name: Build and run docker-compose on server
         run: |
-          ssh -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "cd /home/${{ secrets.SSH_USER }}/app && docker compose down"
-          ssh -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "cd /home/${{ secrets.SSH_USER }}/app && docker compose build"
-          ssh -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "cd /home/${{ secrets.SSH_USER }}/app && docker compose up -d"
+          ssh -t -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "cd /home/${{ secrets.SSH_USER }}/app && docker compose down"
+          ssh -t -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "cd /home/${{ secrets.SSH_USER }}/app && docker compose build"
+          ssh -t -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "cd /home/${{ secrets.SSH_USER }}/app && docker compose up -d"
 
       - name: Check Docker Compose Status
         run: |
-          ssh -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "docker compose ps"
+          ssh -t -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "docker compose ps"
 
       - name: View Userbot Logs
         run: |
-          ssh -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "docker compose logs userbot --tail 50"
+          ssh -t -i ~/.ssh/id_rsa ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "docker compose logs userbot --tail 50"

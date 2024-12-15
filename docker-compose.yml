@@ -38,3 +38,4 @@ services:
     volumes:
       - ./logs:/app/logs
       - ./media:/app/media
+      - ./userbot:/app/userbot

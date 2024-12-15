@@ -30,9 +30,13 @@ jobs:
         run: ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
 
       - name: Test SSH Connection
-        run: ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_ed25519 dev@${{ secrets.SSH_HOST }} 'echo "SSH connection established"'
+        run: ssh -i ~/.ssh/id_ed25519 dev@${{ secrets.SSH_HOST }} 'echo "SSH connection established"'
 
-      - name: Copy code to server
+      - name: Decode and Save Session File
+        run: |
+          echo "${{ secrets.SESSION_FILE_BASE64 }}" | base64 --decode > session_name.session
+
+      - name: Copy code and session to server
         run: |
           rsync -avz -e "ssh -i ~/.ssh/id_ed25519" --exclude '.git' --exclude '.github' ./ dev@${{ secrets.SSH_HOST }}:/home/dev/app/
 

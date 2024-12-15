@@ -8,21 +8,30 @@ from userbot.config import Config
 from userbot.kafka_producer import KafkaMessageProducer
 from userbot.utils import human_like_delay, ensure_dir
 
+# Настройка логирования
 logger = logging.getLogger(__name__)
-
 logging.basicConfig(
     filename=Config.LOG_FILE,
     format='%(asctime)s %(levelname)s [%(name)s]: %(message)s',
     level=getattr(logging, Config.LOG_LEVEL),
 )
 
+# Получение переменных окружения
+api_id = int(os.getenv('TELEGRAM_API_ID'))
+api_hash = os.getenv('TELEGRAM_API_HASH')
+phone = os.getenv('TELEGRAM_PHONE')
+
+# Создание необходимых директорий
 ensure_dir(Config.MEDIA_DIR)
 ensure_dir(os.path.dirname(Config.LOG_FILE))
 
+# Инициализация Kafka продюсера
 kafka_producer = KafkaMessageProducer(bootstrap_servers=Config.KAFKA_BOOTSTRAP_SERVERS)
-client = TelegramClient('userbot_session', Config.API_ID, Config.API_HASH)
-shutdown_event = asyncio.Event()
 
+# Инициализация клиента с использованием файла сессии
+session_file = 'session_name'  # Имя файла сессии без расширения
+client = TelegramClient(session_file, api_id, api_hash)
+shutdown_event = asyncio.Event()
 
 # Обработчик для канала
 @client.on(events.NewMessage(chats=[Config.CHANNEL_ID]))
@@ -60,7 +69,6 @@ async def handler_channel(event):
     except Exception:
         logger.exception("Unexpected error in channel message handler.")
 
-
 # Обработчик для чата
 @client.on(events.NewMessage(chats=[Config.CHAT_ID]))
 async def handler_chat(event):
@@ -97,43 +105,38 @@ async def handler_chat(event):
     except Exception:
         logger.exception("Unexpected error in chat message handler.")
 
-
+# Функция для запуска бота
 async def run_userbot():
-    await client.start(phone=Config.PHONE)
+    await client.connect()
+    if not await client.is_user_authorized():
+        logger.error("Telegram client is not authorized. Ensure the session file is correct.")
+        shutdown_event.set()
+        return
     me = await client.get_me()
     logger.info("Userbot started as: %s (ID: %s)", me.username, me.id)
 
-    await human_like_delay(1, 3)
+    # Запуск обработчиков
+    await client.run_until_disconnected()
 
-    done, pending = await asyncio.wait(
-        [client.run_until_disconnected(), shutdown_event.wait()],
-        return_when=asyncio.FIRST_COMPLETED
-    )
-
-    if shutdown_event.is_set():
-        logger.info("Shutdown event triggered. Disconnecting Telegram client...")
-        await client.disconnect()
-
-
+# Обработчик сигналов завершения
 def shutdown_signal_handler(signum, frame):
     logger.info("Received shutdown signal (%s), initiating graceful shutdown...", signum)
     shutdown_event.set()
 
-
-def main():
+# Основная функция
+async def main():
     loop = asyncio.get_event_loop()
     for s in [signal.SIGINT, signal.SIGTERM]:
         loop.add_signal_handler(s, shutdown_signal_handler, s, None)
 
+    await run_userbot()
+
+# Запуск бота
+if __name__ == "__main__":
     try:
-        loop.run_until_complete(run_userbot())
+        asyncio.run(main())
     except KeyboardInterrupt:
         logger.info("Userbot stopped by user request.")
     finally:
         kafka_producer.close()
-        loop.close()
         logger.info("Userbot service stopped gracefully.")
-
-
-if __name__ == "__main__":
-    main()

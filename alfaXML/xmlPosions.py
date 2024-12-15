@@ -1,7 +1,7 @@
 import xml.etree.ElementTree as ET
 
 # Загрузка XML из файла
-tree = ET.parse('report.xml')
+tree = ET.parse('../tg/tgBot/inputs/xmlFiles/report1.xml')
 root = tree.getroot()
 
 positions = root.find('positions')

@@ -4,7 +4,7 @@
 FROM python:3.10-slim
 
 # Установка системных зависимостей
-RUN apt-get update && apt-get install -y gcc libpq-dev
+RUN apt-get update && apt-get install -y gcc libpq-dev netcat
 
 # Установка зависимостей Python
 COPY requirements.txt .
@@ -20,4 +20,4 @@ RUN chmod +x /app/wait-for-kafka.sh
 WORKDIR /app
 
 # Выполнение миграций и запуск приложения
-CMD ["bash", "-c", "./wait-for-kafka.sh kafka && alembic upgrade head && python app/consumer.py"]
+CMD ["bash", "-c", "./wait-for-kafka.sh kafka 9092 && alembic upgrade head && python app/consumer.py"]

@@ -5,6 +5,8 @@ services:
     image: confluentinc/cp-zookeeper:7.4.0
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+      ZOOKEEPER_SYNC_LIMIT: 2
     ports:
       - "2181:2181"
 
@@ -16,9 +18,7 @@ services:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
     ports:
       - "9092:9092"
 
@@ -29,9 +29,10 @@ services:
     environment:
       TELEGRAM_API_ID: "${TELEGRAM_API_ID}"
       TELEGRAM_API_HASH: "${TELEGRAM_API_HASH}"
+      TELEGRAM_PHONE: "${TELEGRAM_PHONE}"
       TELEGRAM_CHANNEL_ID: "${TELEGRAM_CHANNEL_ID}"
       TELEGRAM_CHAT_ID: "${TELEGRAM_CHAT_ID}"
-      KAFKA_BOOTSTRAP_SERVERS: "${KAFKA_BOOTSTRAP_SERVERS}"
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
       KAFKA_CHANNEL_TOPIC: "${KAFKA_CHANNEL_TOPIC}"
       KAFKA_CHAT_TOPIC: "${KAFKA_CHAT_TOPIC}"
       LOG_LEVEL: "${LOG_LEVEL}"
@@ -43,6 +44,37 @@ services:
       - ./tg:/tg
       - ./session_name.session:/tg/tgUserBot/session_name.session
       - ./wait-for-kafka.sh:/tg/tgUserBot/wait-for-kafka.sh
-
     working_dir: /tg/tgUserBot
-    command: [ "./wait-for-kafka.sh", "kafka", "9092", "python3", "main.py" ]  # Использование скрипта ожидания
+    command: ["./wait-for-kafka.sh", "kafka", "9092", "python3", "main.py"]
+
+  data-processor:
+    build:
+      context: ./data_processor
+      dockerfile: Dockerfile
+    depends_on:
+      - kafka
+      - postgres
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+      KAFKA_TOPIC: "telegram_channel_messages"  # Топик для потребления
+      DATABASE_URL: "postgresql://postgres:postgres@postgres:5432/data_processor_db"
+      LOG_LEVEL: "INFO"
+      LOG_FILE: "/app/logs/data_processor.log"
+    volumes:
+      - ./data_processor/logs:/app/logs
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: data_processor_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

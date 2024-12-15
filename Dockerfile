@@ -1,15 +1,18 @@
 FROM python:3.10-slim
 
 # Установка зависимостей
-WORKDIR /tg
+WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Копирование кода бота
-COPY userbot/ ./userbot/
+# Копирование папки tg
+COPY tg /tg  # Копирование папки tg в контейнер
 
 # Копирование файла сессии
 COPY session_name.session .
 
+# Установить рабочую директорию
+WORKDIR /tg/tgUserBot
+
 # Запуск бота
-CMD ["python3", "tgUserBot/main.py"]
+CMD ["python3", "main.py"]

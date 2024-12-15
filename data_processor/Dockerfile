@@ -20,4 +20,4 @@ RUN chmod +x /app/wait-for-kafka.sh
 WORKDIR /app
 
 # Выполнение миграций и запуск приложения
-CMD ["bash", "-c", "./wait-for-kafka.sh && alembic upgrade head && python app/consumer.py"]
+CMD ["bash", "-c", "./wait-for-kafka.sh kafka && alembic upgrade head && python app/consumer.py"]

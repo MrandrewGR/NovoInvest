@@ -41,6 +41,7 @@ jobs:
         run: |
           rsync -avz -e "ssh -i ~/.ssh/id_ed25519" --exclude '.git' --exclude '.github' ./ dev@${{ secrets.SSH_HOST }}:/home/dev/app/
 
+
       - name: Install Docker and Docker Compose on server
         run: |
           ssh -i ~/.ssh/id_ed25519 dev@${{ secrets.SSH_HOST }} "sudo apt-get update && sudo apt-get install -y ca-certificates curl gnupg lsb-release"
@@ -63,6 +64,10 @@ jobs:
           ssh -i ~/.ssh/id_ed25519 dev@${{ secrets.SSH_HOST }} "echo KAFKA_BOOTSTRAP_SERVERS=${{ secrets.KAFKA_BOOTSTRAP_SERVERS }} >> /home/dev/app/.env"
           ssh -i ~/.ssh/id_ed25519 dev@${{ secrets.SSH_HOST }} "echo KAFKA_CHANNEL_TOPIC=${{ secrets.KAFKA_CHANNEL_TOPIC }} >> /home/dev/app/.env"
           ssh -i ~/.ssh/id_ed25519 dev@${{ secrets.SSH_HOST }} "echo KAFKA_CHAT_TOPIC=${{ secrets.KAFKA_CHAT_TOPIC }} >> /home/dev/app/.env"
+          ssh -i ~/.ssh/id_ed25519 dev@${{ secrets.SSH_HOST }} "echo LOG_LEVEL=${{ secrets.LOG_LEVEL }} >> /home/dev/app/.env"
+          ssh -i ~/.ssh/id_ed25519 dev@${{ secrets.SSH_HOST }} "echo LOG_FILE=${{ secrets.LOG_FILE }} >> /home/dev/app/.env"
+          ssh -i ~/.ssh/id_ed25519 dev@${{ secrets.SSH_HOST }} "echo MEDIA_DIR=${{ secrets.MEDIA_DIR }} >> /home/dev/app/.env"
+
 
       - name: Build and run docker-compose on server
         run: |

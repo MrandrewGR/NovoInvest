@@ -44,4 +44,4 @@ services:
       - ./session_name.session:/app/session_name.session
       - ./wait-for-kafka.sh:/tg/tgUserBot/wait-for-kafka.sh  # Монтирование скрипта ожидания
     working_dir: /tg/tgUserBot
-    command: ["./wait-for-kafka.sh", "kafka", "9092", "python3", "main.py"]  # Использование скрипта ожидания
+    command: [ "./wait-for-kafka.sh", "kafka", "9092", "python3", "main.py" ]  # Использование скрипта ожидания

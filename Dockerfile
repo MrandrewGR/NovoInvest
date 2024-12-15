@@ -1,7 +1,7 @@
 FROM python:3.10-slim
 
 # Установка зависимостей
-WORKDIR /app
+WORKDIR /tg
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
@@ -12,4 +12,4 @@ COPY userbot/ ./userbot/
 COPY session_name.session .
 
 # Запуск бота
-CMD ["python3", "tg/tgUserBot/main.py"]
+CMD ["python3", "tgUserBot/main.py"]

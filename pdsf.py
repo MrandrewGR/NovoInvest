@@ -6,7 +6,7 @@ api_hash = '1a1fb40bc6fb9e6475f443742f4c4fe5'
 phone = '+381631899159'
 password = 'sact0cugh0lick!GRAW'  # Ваш пароль для 2FA
 
-client = TelegramClient('session_name', api_id, api_hash)
+client = TelegramClient('session_name123', api_id, api_hash)
 
 async def main():
     await client.start(phone)

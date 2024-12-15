@@ -69,6 +69,7 @@ jobs:
           ssh -i ~/.ssh/id_ed25519 dev@${{ secrets.SSH_HOST }} "echo MEDIA_DIR=${{ secrets.MEDIA_DIR }} >> /home/dev/app/.env"
 
 
+
       - name: Build and run docker-compose on server
         run: |
           ssh -i ~/.ssh/id_ed25519 dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose down"

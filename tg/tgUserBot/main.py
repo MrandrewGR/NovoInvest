@@ -19,7 +19,6 @@ logging.basicConfig(
 # Получение переменных окружения
 api_id = int(os.getenv('TELEGRAM_API_ID'))
 api_hash = os.getenv('TELEGRAM_API_HASH')
-# phone = os.getenv('TELEGRAM_PHONE')  # Не требуется, если используется файл сессии
 
 # Создание необходимых директорий
 ensure_dir(Config.MEDIA_DIR)

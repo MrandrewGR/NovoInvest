@@ -29,7 +29,6 @@ services:
     environment:
       TELEGRAM_API_ID: "${TELEGRAM_API_ID}"
       TELEGRAM_API_HASH: "${TELEGRAM_API_HASH}"
-      TELEGRAM_PHONE: "${TELEGRAM_PHONE}"
       TELEGRAM_CHANNEL_ID: "${TELEGRAM_CHANNEL_ID}"
       TELEGRAM_CHAT_ID: "${TELEGRAM_CHAT_ID}"
       KAFKA_BOOTSTRAP_SERVERS: "${KAFKA_BOOTSTRAP_SERVERS}"
@@ -40,3 +39,6 @@ services:
       - ./media:/app/media
       - ./userbot:/app/userbot
       - ./session_name.session:/app/session_name.session  # Монтирование файла сессии
+    # Убедитесь, что поле 'command' либо отсутствует, либо правильно указывает на скрипт
+    # Если оно присутствует и указывает только на 'python3', измените его:
+    # command: python3 userbot/main.py

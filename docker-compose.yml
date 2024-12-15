@@ -34,10 +34,14 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: "${KAFKA_BOOTSTRAP_SERVERS}"
       KAFKA_CHANNEL_TOPIC: "${KAFKA_CHANNEL_TOPIC}"
       KAFKA_CHAT_TOPIC: "${KAFKA_CHAT_TOPIC}"
+      LOG_LEVEL: "${LOG_LEVEL}"
+      LOG_FILE: "${LOG_FILE}"
+      MEDIA_DIR: "${MEDIA_DIR}"
     volumes:
       - ./logs:/app/logs
       - ./media:/app/media
       - ./tg:/tg
       - ./session_name.session:/app/session_name.session
+      - ./wait-for-kafka.sh:/wait-for-kafka.sh  # Монтирование скрипта ожидания
     working_dir: /tg/tgUserBot
-    command: python3 main.py
+    command: [ "./wait-for-kafka.sh", "kafka", "9092", "python3", "main.py" ]  # Использование скрипта ожидания

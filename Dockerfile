@@ -12,4 +12,4 @@ COPY userbot/ ./userbot/
 COPY session_name.session .
 
 # Запуск бота
-CMD ["python3", "userbot/main.py"]
+CMD ["python3", "tg/tgUserBot/main.py"]

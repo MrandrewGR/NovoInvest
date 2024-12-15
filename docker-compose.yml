@@ -37,7 +37,7 @@ services:
     volumes:
       - ./logs:/app/logs
       - ./media:/app/media
-      - ./userbot:/tg/tgUserBot/main.py
+      - ./userbot:/tg/tgUserBot
       - ./session_name.session:/app/session_name.session  # Монтирование файла сессии
     # Убедитесь, что поле 'command' либо отсутствует, либо правильно указывает на скрипт
     # Если оно присутствует и указывает только на 'python3', измените его:

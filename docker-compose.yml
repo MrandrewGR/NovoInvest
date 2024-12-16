@@ -43,9 +43,9 @@ services:
       - ./media:/app/media
       - ./tg:/tg
       - ./session_name.session:/tg/tgUserBot/session_name.session
-      - ./wait-for-kafka.sh:/tg/tgUserBot/wait-for-kafka.sh
+      - ./wait-for-services.sh:/tg/tgUserBot/wait-for-services.sh
     working_dir: /tg/tgUserBot
-    command: ["./wait-for-kafka.sh", "kafka", "9092", "python3", "main.py"]
+    command: ["./wait-for-services.sh", "kafka", "9092", "python3", "main.py"]
 
   data-processor:
     build:

@@ -11,13 +11,13 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Копирование кода приложения
-COPY app/ /app/app/
+COPY . /app/
 COPY alembic.ini /app/
 COPY migrations/ /app/migrations/
-COPY wait-for-kafka.sh /app/wait-for-kafka.sh
-RUN chmod +x /app/wait-for-kafka.sh
+COPY wait-for-services.sh /app/wait-for-services.sh
+RUN chmod +x /app/wait-for-services.sh
 
 WORKDIR /app
 
 # Выполнение миграций и запуск приложения
-CMD ["bash", "-c", "./wait-for-kafka.sh kafka 9092 && alembic upgrade head && python -m app.consumer"]
+CMD ["bash", "-c", "./wait-for-services.sh && alembic upgrade head && python consumer.py"]

@@ -5,7 +5,8 @@ import logging
 from kafka import KafkaConsumer
 from sqlalchemy.orm import Session
 from app.database import SessionLocal, engine
-from data_processor.app.models import Base, TelegramMessage
+from models import Base, TelegramMessage
+
 
 
 # Настройка логирования

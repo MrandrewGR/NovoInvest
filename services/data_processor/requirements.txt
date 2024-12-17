@@ -1,0 +1,4 @@
+kafka-python==2.0.2
+SQLAlchemy==1.4.46
+psycopg2-binary==2.9.6
+alembic==1.11.1

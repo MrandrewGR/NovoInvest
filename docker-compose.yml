@@ -42,14 +42,14 @@ services:
       - ./logs:/app/logs
       - ./media:/app/media
       - ./tg:/tg
-      - ./session_name.session:/tg/tgUserBot/session_name.session
-      - ./wait-for-services.sh:/tg/tgUserBot/wait-for-services.sh
-    working_dir: /tg/tgUserBot
+      - ./session_name.session:/tg/tg_user_bot/session_name.session
+      - ./wait-for-services.sh:/tg/tg_user_bot/wait-for-services.sh
+    working_dir: /services/tg_user_bot
     command: ["./wait-for-services.sh", "kafka", "9092", "python3", "main.py"]
 
   data-processor:
     build:
-      context: ./data_processor
+      context: services/data_processor
       dockerfile: Dockerfile
     depends_on:
       - kafka

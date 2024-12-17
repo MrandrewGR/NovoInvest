@@ -1,0 +1,41 @@
+/Users/andreigrishin/Documents/GitHub/NovoInvest
+├── docker-compose.yml
+├── env
+├── requirements
+│   └── requirements.txt
+├── services
+│   ├── __init__.py
+│   ├── data_processor
+│   │   ├── Dockerfile
+│   │   ├── __init__.py
+│   │   ├── alembic.ini
+│   │   ├── app
+│   │   │   ├── __init__.py
+│   │   │   ├── __pycache__
+│   │   │   ├── consumer.py
+│   │   │   ├── database.py
+│   │   │   └── models.py
+│   │   ├── docker-compose.yml
+│   │   ├── logs
+│   │   ├── migrations
+│   │   │   ├── README
+│   │   │   ├── __init__.py
+│   │   │   ├── __pycache__
+│   │   │   ├── env.py
+│   │   │   ├── script.py.mako
+│   │   │   └── versions
+│   │   ├── requirements.txt
+│   │   ├── tree.txt
+│   │   └── wait-for-services.sh
+│   └── tgUserBot
+│       ├── __init__.py
+│       ├── config.py
+│       ├── kafka_producer.py
+│       ├── main.py
+│       └── utils.py
+├── tree_structure.txt
+└── utils
+    ├── get structure.py
+    ├── get_session.py
+    ├── session_name.session
+    └── session_name.session.b64

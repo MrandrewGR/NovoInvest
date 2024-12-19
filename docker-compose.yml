@@ -2,40 +2,25 @@ version: '3.8'
 
 services:
   zookeeper:
-    image: bitnami/zookeeper:3.8
+    image: confluentinc/cp-zookeeper:7.4.0
     environment:
-      ZOO_ENABLE_AUTH: "no"
-      ZOO_STANDALONE_ENABLED: "yes"
-      ZOO_LISTEN_CLIENT_PORT: "2181"
+      ZOOKEEPER_CLIENT_PORT: 2181
     ports:
       - "2181:2181"
-    healthcheck:
-      test: ["CMD-SHELL", "echo ruok | nc 127.0.0.1 2181 | grep imok || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 60s
-
-
-
 
   kafka:
     image: confluentinc/cp-kafka:7.4.0
     depends_on:
-      zookeeper:
-        condition: service_healthy
+      - zookeeper
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
     ports:
       - "9092:9092"
-    healthcheck:
-      test: ["CMD", "kafka-topics", "--bootstrap-server", "kafka:9092", "--list"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
 
   postgres:
     image: postgres:15
@@ -45,23 +30,15 @@ services:
       POSTGRES_DB: data_processor_db
     ports:
       - "5432:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
 
   data-processor:
     build:
       context: ./services/data_processor
-      dockerfile: Dockerfile
     env_file:
       - ./env/.env
     depends_on:
-      kafka:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
+      - kafka
+      - postgres
     volumes:
       - ./services/data_processor/logs:/app/logs
     restart: unless-stopped
@@ -69,12 +46,10 @@ services:
   tg_standard_bot:
     build:
       context: ./services/tg_standard_bot
-      dockerfile: Dockerfile
     env_file:
       - ./env/.env
     depends_on:
-      kafka:
-        condition: service_healthy
+      - kafka
     volumes:
       - ./services/tg_standard_bot/app/logs:/app/logs
     restart: unless-stopped
@@ -82,14 +57,11 @@ services:
   tg_user_bot:
     build:
       context: ./services/tg_user_bot
-      dockerfile: Dockerfile
     env_file:
       - ./env/.env
     depends_on:
-      kafka:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
+      - kafka
+      - postgres
     volumes:
       - ./services/tg_user_bot/logs:/app/logs
       - ./services/tg_user_bot/media:/app/media

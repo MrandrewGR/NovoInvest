@@ -1,57 +1,67 @@
-NovoInvest
-├── .github
-│   └── workflows
-│       └── deploy.yml+
-├── docker-compose.yml+
+/Users/andreigrishin/Documents/GitHub/NovoInvest
+├── docker-compose.yml
 ├── env
-│   └── .env+
+│   └── env
+├── requirements
+│   └── requirements.txt
 ├── services
-│   ├── data_processor+
-│   │   ├── Dockerfile+
-│   │   ├── requirements.txt+
-│   │   ├── alembic.ini+
-│   │   ├── wait-for-services.sh+
+│   ├── __init__.py
+│   ├── data_processor
+│   │   ├── Dockerfile
+│   │   ├── __init__.py
+│   │   ├── alembic.ini
+│   │   ├── app
+│   │   │   ├── __init__.py
+│   │   │   ├── __pycache__
+│   │   │   ├── consumer.py
+│   │   │   ├── database.py
+│   │   │   └── models.py
+│   │   ├── docker-compose.yml
 │   │   ├── logs
 │   │   ├── migrations
 │   │   │   ├── README
 │   │   │   ├── __init__.py
+│   │   │   ├── __pycache__
 │   │   │   ├── env.py
 │   │   │   ├── script.py.mako
 │   │   │   └── versions
-│   │   └── app
-│   │       ├── __init__.py
-│   │       ├── consumer.py
-│   │       ├── database.py
-│   │       ├── models.py
-│   │       └── (при необходимости другие файлы)
+│   │   ├── requirements.txt
+│   │   └── wait-for-services.sh
 │   ├── tg_standard_bot
 │   │   ├── Dockerfile
-│   │   ├── requirements.txt
-│   │   └── app
-│   │       ├── __init__.py
-│   │       ├── config.py
-│   │       ├── handlers.py
-│   │       ├── instructions
-│   │       │   └── __init__.py
-│   │       ├── kafka_producer.py
-│   │       ├── logger.py
-│   │       └── main.py
+│   │   ├── app
+│   │   │   ├── __init__.py
+│   │   │   ├── config.py
+│   │   │   ├── handlers.py
+│   │   │   ├── instructions
+│   │   │   │   └── __init__.py
+│   │   │   ├── kafka_producer.py
+│   │   │   ├── logger.py
+│   │   │   └── main.py
+│   │   └── requirements.txt
 │   └── tg_user_bot
 │       ├── Dockerfile
-│       ├── requirements.txt
-│       ├── logs
+│       ├── app
+│       │   ├── README.md
+│       │   ├── __init__.py
+│       │   ├── config.py
+│       │   ├── handlers
+│       │   │   ├── __init__.py
+│       │   │   ├── channel_handler.py
+│       │   │   └── chat_handler.py
+│       │   ├── kafka_consumer.py
+│       │   ├── kafka_producer.py
+│       │   ├── logger.py
+│       │   ├── main.py
+│       │   ├── state.py
+│       │   └── utils.py
+│       ├── docker-compose.yml
 │       ├── media
-│       └── app
-│           ├── __init__.py
-│           ├── config.py
-│           ├── handlers
-│           │   ├── __init__.py
-│           │   ├── channel_handler.py
-│           │   └── chat_handler.py
-│           ├── kafka_consumer.py
-│           ├── kafka_producer.py
-│           ├── logger.py
-│           ├── main.py
-│           ├── state.py
-│           └── utils.py
-└── session_name.session
+│       └── requirements.txt
+├── tree_structure.txt
+└── utils
+    ├── get structure.py
+    ├── get_session.py
+    ├── session_b64.txt
+    ├── session_name.session
+    └── session_name.session.b64

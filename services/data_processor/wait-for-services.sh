@@ -1,9 +1,7 @@
+# File location: services/data_processor/wait-for-services.sh
 #!/bin/bash
-# wait-for-services.sh
-
 set -e
 
-# Ожидание Kafka
 wait_for_service() {
   local host=$1
   local port=$2
@@ -21,5 +19,4 @@ wait_for_service postgres 5432
 # Ожидание Kafka
 wait_for_service kafka 9092
 
-# Выполнение команды
 exec "$@"

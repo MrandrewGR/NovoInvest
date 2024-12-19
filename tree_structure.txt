@@ -1,41 +1,57 @@
-/Users/andreigrishin/Documents/GitHub/NovoInvest
-├── docker-compose.yml
+NovoInvest
+├── .github
+│   └── workflows
+│       └── deploy.yml+
+├── docker-compose.yml+
 ├── env
-├── requirements
-│   └── requirements.txt
+│   └── .env+
 ├── services
-│   ├── __init__.py
-│   ├── data_processor
-│   │   ├── Dockerfile
-│   │   ├── __init__.py
-│   │   ├── alembic.ini
-│   │   ├── app
-│   │   │   ├── __init__.py
-│   │   │   ├── __pycache__
-│   │   │   ├── consumer.py
-│   │   │   ├── database.py
-│   │   │   └── models.py
-│   │   ├── docker-compose.yml
+│   ├── data_processor+
+│   │   ├── Dockerfile+
+│   │   ├── requirements.txt+
+│   │   ├── alembic.ini+
+│   │   ├── wait-for-services.sh+
 │   │   ├── logs
 │   │   ├── migrations
 │   │   │   ├── README
 │   │   │   ├── __init__.py
-│   │   │   ├── __pycache__
 │   │   │   ├── env.py
 │   │   │   ├── script.py.mako
 │   │   │   └── versions
+│   │   └── app
+│   │       ├── __init__.py
+│   │       ├── consumer.py
+│   │       ├── database.py
+│   │       ├── models.py
+│   │       └── (при необходимости другие файлы)
+│   ├── tg_standard_bot
+│   │   ├── Dockerfile
 │   │   ├── requirements.txt
-│   │   ├── tree.txt
-│   │   └── wait-for-services.sh
-│   └── tgUserBot
-│       ├── __init__.py
-│       ├── config.py
-│       ├── kafka_producer.py
-│       ├── main.py
-│       └── utils.py
-├── tree_structure.txt
-└── utils
-    ├── get structure.py
-    ├── get_session.py
-    ├── session_name.session
-    └── session_name.session.b64
+│   │   └── app
+│   │       ├── __init__.py
+│   │       ├── config.py
+│   │       ├── handlers.py
+│   │       ├── instructions
+│   │       │   └── __init__.py
+│   │       ├── kafka_producer.py
+│   │       ├── logger.py
+│   │       └── main.py
+│   └── tg_user_bot
+│       ├── Dockerfile
+│       ├── requirements.txt
+│       ├── logs
+│       ├── media
+│       └── app
+│           ├── __init__.py
+│           ├── config.py
+│           ├── handlers
+│           │   ├── __init__.py
+│           │   ├── channel_handler.py
+│           │   └── chat_handler.py
+│           ├── kafka_consumer.py
+│           ├── kafka_producer.py
+│           ├── logger.py
+│           ├── main.py
+│           ├── state.py
+│           └── utils.py
+└── session_name.session

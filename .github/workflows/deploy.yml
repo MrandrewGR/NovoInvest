@@ -1,3 +1,5 @@
+# File location: .github/workflows/deploy.yml
+
 name: Deploy to Hetzner
 
 on:
@@ -9,42 +11,35 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Checkout the latest code from the repository
       - name: Checkout code
         uses: actions/checkout@v2
 
-      # 2. Install rsync for file synchronization
       - name: Install rsync
         run: sudo apt-get update && sudo apt-get install -y rsync
 
-      # 3. Prepare SSH key for authentication
       - name: Prepare SSH key
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
 
-      # 4. Add server to known hosts to prevent SSH warnings
       - name: Add known hosts
         run: ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
 
-      # 5. Test SSH connection to ensure everything is set up correctly
       - name: Test SSH Connection
         run: ssh -i ~/.ssh/id_ed25519 dev@${{ secrets.SSH_HOST }} 'echo "SSH connection established"'
 
-      # 6. Decode and save session file (если требуется)
       - name: Decode and Save Session File
+        if: ${{ secrets.SESSION_FILE_BASE64 != '' }}
         run: |
           echo "${{ secrets.SESSION_FILE_BASE64 }}" | base64 --decode > session_name.session
           chmod 600 session_name.session
 
-      # 7. Copy application code and session file to the server
       - name: Copy code and session to server
         run: |
           rsync -avz -e "ssh -i ~/.ssh/id_ed25519" --exclude '.git' --exclude '.github' ./ dev@${{ secrets.SSH_HOST }}:/home/dev/app/
-          rsync -avz -e "ssh -i ~/.ssh/id_ed25519" session_name.session dev@${{ secrets.SSH_HOST }}:/home/dev/app/session_name.session
+          if [ -f session_name.session ]; then rsync -avz -e "ssh -i ~/.ssh/id_ed25519" session_name.session dev@${{ secrets.SSH_HOST }}:/home/dev/app/session_name.session; fi
 
-      # 8. Install Docker and Docker Compose on the server
       - name: Install Docker and Docker Compose on server
         run: |
           ssh -i ~/.ssh/id_ed25519 dev@${{ secrets.SSH_HOST }} "sudo apt-get update && sudo apt-get install -y ca-certificates curl gnupg lsb-release"
@@ -54,14 +49,12 @@ jobs:
           ssh -i ~/.ssh/id_ed25519 dev@${{ secrets.SSH_HOST }} "sudo chmod +x /home/dev/.docker/cli-plugins/docker-compose"
           ssh -i ~/.ssh/id_ed25519 dev@${{ secrets.SSH_HOST }} "docker compose version"
 
-      # 9. Add user to Docker group to run Docker commands without sudo
       - name: Add user to Docker group
         run: ssh -i ~/.ssh/id_ed25519 dev@${{ secrets.SSH_HOST }} "sudo usermod -aG docker dev"
 
-      # 10. Create .env file on server with all necessary environment variables
       - name: Create .env file on server
         run: |
-          ssh -i ~/.ssh/id_ed25519 dev@${{ secrets.SSH_HOST }} "cat > /home/dev/app/.env <<EOF
+          ssh -i ~/.ssh/id_ed25519 dev@${{ secrets.SSH_HOST }} "cat > /home/dev/app/env/.env <<EOF
           TELEGRAM_API_ID=${{ secrets.TELEGRAM_API_ID }}
           TELEGRAM_API_HASH=${{ secrets.TELEGRAM_API_HASH }}
           TELEGRAM_PHONE=${{ secrets.TELEGRAM_PHONE }}
@@ -75,26 +68,23 @@ jobs:
           MEDIA_DIR=${{ secrets.MEDIA_DIR }}
           DATABASE_URL=postgresql://postgres:postgres@postgres:5432/data_processor_db
           KAFKA_TOPIC=telegram_channel_messages
+          TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
           EOF"
 
-      # 11. Build and deploy the Docker containers on the server
       - name: Build and run docker-compose on server
         run: |
           ssh -i ~/.ssh/id_ed25519 dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose down"
           ssh -i ~/.ssh/id_ed25519 dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose build --no-cache"
           ssh -i ~/.ssh/id_ed25519 dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose up -d"
 
-      # 12. Check the status of Docker containers to ensure they're running
       - name: Check Docker Compose Status
         run: |
           ssh -i ~/.ssh/id_ed25519 dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose ps"
 
-      # 13. View logs of the userbot service for debugging purposes
       - name: View Userbot Logs
         run: |
           ssh -i ~/.ssh/id_ed25519 dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose logs userbot --tail 50"
 
-      # 14. View logs of the data-processor service to ensure migrations and consumers are running correctly
       - name: View Data Processor Logs
         run: |
           ssh -i ~/.ssh/id_ed25519 dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose logs data-processor --tail 50"

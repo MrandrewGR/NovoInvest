@@ -1,11 +1,10 @@
-# app/state.py
+# File location: services/tg_user_bot/app/state.py
 
 import asyncio
 import logging
 from telethon import TelegramClient
 
 logger = logging.getLogger("state")
-
 
 class MessageCounter:
     def __init__(self, client: TelegramClient, threshold: int = 100):

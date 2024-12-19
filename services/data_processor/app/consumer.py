@@ -1,15 +1,13 @@
-# app/consumer.py
+# File location: services/data_processor/app/consumer.py
+
 import os
 import json
 import logging
 from kafka import KafkaConsumer
 from sqlalchemy.orm import Session
-from app.database import SessionLocal, engine
-from models import Base, TelegramMessage
+from .database import SessionLocal, engine
+from .models import Base, TelegramMessage
 
-
-
-# Настройка логирования
 LOG_FILE = os.getenv("LOG_FILE", "/app/logs/data_processor.log")
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 
@@ -21,7 +19,6 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-# Создание таблиц в базе данных
 Base.metadata.create_all(bind=engine)
 
 def get_db():

@@ -1,4 +1,5 @@
-# app/logger.py
+# File location: services/tg_user_bot/app/logger.py
+# Восстановленная сложная структура логирования для tg_user_bot
 
 import logging
 import os
@@ -39,6 +40,7 @@ def setup_logging():
 
     # Основной логгер для пользовательского приложения
     userbot_logger = logging.getLogger("userbot")
+    # Добавляем файл и стрим
     userbot_logger.addHandler(logging.FileHandler(module_handlers["userbot"]))
     userbot_logger.addHandler(logging.StreamHandler())
 

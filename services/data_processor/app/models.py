@@ -1,6 +1,7 @@
-# app/models.py
+# File location: services/data_processor/app/models.py
+
 from sqlalchemy import Column, Integer, String, Text, DateTime
-from services.data_processor.app.database import Base
+from .database import Base
 import datetime
 
 class TelegramMessage(Base):

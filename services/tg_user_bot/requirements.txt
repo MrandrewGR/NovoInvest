@@ -1,4 +1,4 @@
-# requirements.txt
+# File location: services/tg_user_bot/requirements.txt
 
 telethon==1.31.0
 kafka-python==2.0.2

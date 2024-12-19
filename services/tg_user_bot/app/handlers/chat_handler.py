@@ -1,6 +1,7 @@
-# app/handlers/chat_handler.py
+# File location: services/tg_user_bot/app/handlers/chat_handler.py
 
 import logging
+import asyncio
 from telethon import events
 from telethon.errors import FloodWaitError
 from ..config import settings
@@ -10,12 +11,15 @@ from ..state import MessageCounter
 
 logger = logging.getLogger("handlers.chat_handler")
 
-def register_chat_handler(client, kafka_producer, counter: MessageCounter):
+def register_chat_handler(client, kafka_producer, counter: MessageCounter, userbot_active: asyncio.Event):
     @client.on(events.NewMessage(chats=[settings.TELEGRAM_CHAT_ID]))
     async def handler_chat(event):
+        if not userbot_active.is_set():
+            logger.info("Userbot приостановлен. Сообщение игнорируется.")
+            return
         await process_message(event, kafka_producer, settings.KAFKA_CHAT_TOPIC, "чата", counter)
 
-async def process_message(event, kafka_producer, topic, source, counter: MessageCounter):
+async def process_message(event, kafka_producer: KafkaMessageProducer, topic, source, counter: MessageCounter):
     try:
         msg = event.message
         message_data = msg.to_dict()
@@ -42,15 +46,13 @@ async def process_message(event, kafka_producer, topic, source, counter: Message
         kafka_producer.send_message(topic, result_data)
         logger.info(f"Сообщение отправлено в Kafka топик '{topic}': {msg.id}")
 
-        # Увеличиваем счётчик сообщений
         await counter.increment()
 
-        # Если есть необходимость в задержке после обработки сообщения
         delay_min, delay_max = get_delay_settings("chat")
         await human_like_delay(delay_min, delay_max)
 
     except FloodWaitError as e:
         logger.warning(f"FloodWaitError для {source}: ждать {e.seconds} секунд")
-        await asyncio.sleep(e.seconds + 5)  # Добавляем дополнительную задержку
+        await asyncio.sleep(e.seconds + 5)
     except Exception as e:
         logger.exception(f"Неожиданная ошибка в обработчике сообщений {source}: {e}")

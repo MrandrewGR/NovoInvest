@@ -1,4 +1,4 @@
-# File location: services/tg_user_bot/Dockerfile
+# File location: services/tg_standard_bot/Dockerfile
 
 FROM python:3.11-slim
 
@@ -8,5 +8,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app/ ./app
+
+WORKDIR /app
 
 CMD ["python", "app/main.py"]

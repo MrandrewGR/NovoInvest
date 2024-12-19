@@ -1,9 +1,9 @@
-# app/kafka_producer.py
+# File location: services/tg_user_bot/app/kafka_producer.py
 
 import logging
 from kafka import KafkaProducer
 import json
-from ..config import settings
+from .config import settings
 
 logger = logging.getLogger("kafka_producer")
 
@@ -16,9 +16,6 @@ class KafkaMessageProducer:
         logger.info("Kafka producer инициализирован.")
 
     def send_message(self, topic: str, message: dict):
-        """
-        Асинхронно отправить сообщение в указанный топик Kafka.
-        """
         try:
             logger.debug(f"Отправка сообщения в топик '{topic}': {message}")
             future = self.producer.send(topic, value=message)

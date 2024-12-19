@@ -1,3 +1,5 @@
+# File location: ./docker-compose.yml
+
 version: '3.8'
 
 services:
@@ -22,48 +24,6 @@ services:
     ports:
       - "9092:9092"
 
-  userbot:
-    build: .
-    depends_on:
-      - kafka
-    environment:
-      TELEGRAM_API_ID: "${TELEGRAM_API_ID}"
-      TELEGRAM_API_HASH: "${TELEGRAM_API_HASH}"
-      TELEGRAM_PHONE: "${TELEGRAM_PHONE}"
-      TELEGRAM_CHANNEL_ID: "${TELEGRAM_CHANNEL_ID}"
-      TELEGRAM_CHAT_ID: "${TELEGRAM_CHAT_ID}"
-      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
-      KAFKA_CHANNEL_TOPIC: "${KAFKA_CHANNEL_TOPIC}"
-      KAFKA_CHAT_TOPIC: "${KAFKA_CHAT_TOPIC}"
-      LOG_LEVEL: "${LOG_LEVEL}"
-      LOG_FILE: "${LOG_FILE}"
-      MEDIA_DIR: "${MEDIA_DIR}"
-    volumes:
-      - ./logs:/app/logs
-      - ./media:/app/media
-      - ./tg:/tg
-      - ./session_name.session:/tg/tg_user_bot/session_name.session
-      - ./wait-for-services.sh:/tg/tg_user_bot/wait-for-services.sh
-    working_dir: /services/tg_user_bot
-    command: ["./wait-for-services.sh", "kafka", "9092", "python3", "main.py"]
-
-  data-processor:
-    build:
-      context: services/data_processor
-      dockerfile: Dockerfile
-    depends_on:
-      - kafka
-      - postgres
-    environment:
-      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
-      KAFKA_TOPIC: "telegram_channel_messages"  # Топик для потребления
-      DATABASE_URL: "postgresql://postgres:postgres@postgres:5432/data_processor_db"
-      LOG_LEVEL: "INFO"
-      LOG_FILE: "/app/logs/data_processor.log"
-    volumes:
-      - ./data_processor/logs:/app/logs
-    restart: unless-stopped
-
   postgres:
     image: postgres:15
     environment:
@@ -74,6 +34,41 @@ services:
       - postgres_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
+    restart: unless-stopped
+
+  tg_user_bot:
+    build: ./services/tg_user_bot
+    env_file:
+      - ./env/.env
+    depends_on:
+      kafka:
+        condition: service_healthy
+    volumes:
+      - ./services/tg_user_bot/logs:/app/logs
+      - ./services/tg_user_bot/media:/app/media
+      - ./session_name.session:/app/session_name.session
+    restart: unless-stopped
+
+  tg_standard_bot:
+    build: ./services/tg_standard_bot
+    env_file:
+      - ./env/.env
+    depends_on:
+      kafka:
+        condition: service_healthy
+    volumes:
+      - ./services/tg_standard_bot/app/logs:/app/logs
+    restart: unless-stopped
+
+  data-processor:
+    build: ./services/data_processor
+    env_file:
+      - ./env/.env
+    depends_on:
+      - kafka
+      - postgres
+    volumes:
+      - ./services/data_processor/logs:/app/logs
     restart: unless-stopped
 
 volumes:

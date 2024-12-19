@@ -52,18 +52,16 @@ jobs:
 
       - name: Create .env file on server
         run: |
-          ssh dev@${{ secrets.SSH_HOST }} "echo 'TELEGRAM_API_ID=${{ secrets.TELEGRAM_API_ID }}' >> /home/dev/app/env/.env"
-          ssh dev@${{ secrets.SSH_HOST }} "echo 'TELEGRAM_API_HASH=${{ secrets.TELEGRAM_API_HASH }}' >> /home/dev/app/env/.env"
-          ssh dev@${{ secrets.SSH_HOST }} "echo 'TELEGRAM_PHONE=${{ secrets.TELEGRAM_PHONE }}' >> /home/dev/app/env/.env"
-          ssh dev@${{ secrets.SSH_HOST }} "echo 'TELEGRAM_CHANNEL_ID=${{ secrets.TELEGRAM_CHANNEL_ID }}' >> /home/dev/app/env/.env"
-          ssh dev@${{ secrets.SSH_HOST }} "echo 'TELEGRAM_CHAT_ID=${{ secrets.TELEGRAM_CHAT_ID }}' >> /home/dev/app/env/.env"
-          ssh dev@${{ secrets.SSH_HOST }} "echo 'KAFKA_BOOTSTRAP_SERVERS=${{ secrets.KAFKA_BOOTSTRAP_SERVERS }}' >> /home/dev/app/env/.env"
-          ssh dev@${{ secrets.SSH_HOST }} "echo 'KAFKA_CHANNEL_TOPIC=${{ secrets.KAFKA_CHANNEL_TOPIC }}' >> /home/dev/app/env/.env"
-          ssh dev@${{ secrets.SSH_HOST }} "echo 'KAFKA_CHAT_TOPIC=${{ secrets.KAFKA_CHAT_TOPIC }}' >> /home/dev/app/env/.env"
-          ssh dev@${{ secrets.SSH_HOST }} "echo 'LOG_LEVEL=${{ secrets.LOG_LEVEL }}' >> /home/dev/app/env/.env"
-          ssh dev@${{ secrets.SSH_HOST }} "echo 'LOG_FILE=${{ secrets.LOG_FILE }}' >> /home/dev/app/env/.env"
-          ssh dev@${{ secrets.SSH_HOST }} "echo 'MEDIA_DIR=${{ secrets.MEDIA_DIR }}' >> /home/dev/app/env/.env"
-          ssh dev@${{ secrets.SSH_HOST }} "echo 'TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}' >> /home/dev/app/env/.env"
+          ssh dev@${{ secrets.SSH_HOST }} "mkdir -p /home/dev/app/env"
+          ssh dev@${{ secrets.SSH_HOST }} "cat <<EOF > /home/dev/app/env/.env
+          TELEGRAM_API_ID=${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH=${{ secrets.TELEGRAM_API_HASH }}
+          TELEGRAM_PHONE=${{ secrets.TELEGRAM_PHONE }}
+          TELEGRAM_CHANNEL_ID=${{ secrets.TELEGRAM_CHANNEL_ID }}
+          TELEGRAM_CHAT_ID=${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
+          EOF"
+
 
       - name: Build and run docker-compose on server
         run: |

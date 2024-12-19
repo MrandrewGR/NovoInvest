@@ -30,7 +30,6 @@ jobs:
         run: ssh -i ~/.ssh/id_ed25519 dev@${{ secrets.SSH_HOST }} 'echo "SSH connection established"'
 
       - name: Decode and Save Session File
-        if: ${{ secrets.SESSION_FILE_BASE64 }}
         run: |
           echo "${{ secrets.SESSION_FILE_BASE64 }}" | base64 --decode > session_name.session
           chmod 600 session_name.session
@@ -38,7 +37,7 @@ jobs:
       - name: Copy code and session to server
         run: |
           rsync -avz -e "ssh -i ~/.ssh/id_ed25519" --exclude '.git' --exclude '.github' ./ dev@${{ secrets.SSH_HOST }}:/home/dev/app/
-          if [ -f session_name.session ]; then rsync -avz -e "ssh -i ~/.ssh/id_ed25519" session_name.session dev@${{ secrets.SSH_HOST }}:/home/dev/app/session_name.session; fi
+          rsync -avz -e "ssh -i ~/.ssh/id_ed25519" session_name.session dev@${{ secrets.SSH_HOST }}:/home/dev/app/session_name.session
 
       - name: Install Docker and Docker Compose on server
         run: |

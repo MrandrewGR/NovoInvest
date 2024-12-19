@@ -2,6 +2,7 @@
 
 from pydantic import BaseSettings, Field
 
+
 class Settings(BaseSettings):
     TELEGRAM_API_ID: int
     TELEGRAM_API_HASH: str
@@ -36,5 +37,6 @@ class Settings(BaseSettings):
     #class Config:
     #    env_file = ".env"
     #    env_file_encoding = 'utf-8'
+
 
 settings = Settings()

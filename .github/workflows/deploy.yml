@@ -53,7 +53,7 @@ jobs:
       - name: Create .env file on server
         run: |
           ssh dev@${{ secrets.SSH_HOST }} "mkdir -p /home/dev/app/env"
-          ssh dev@${{ secrets.SSH_HOST }} "echo 'TELEGRAM_API_ID=${{ secrets.TELEGRAM_API_ID }}' > /home/dev/app/env/.env"
+          ssh dev@${{ secrets.SSH_HOST }} "echo 'TELEGRAM_API_ID=${{ secrets.TELEGRAM_API_ID }}' >> /home/dev/app/env/.env"
           ssh dev@${{ secrets.SSH_HOST }} "echo 'TELEGRAM_API_HASH=${{ secrets.TELEGRAM_API_HASH }}' >> /home/dev/app/env/.env"
           ssh dev@${{ secrets.SSH_HOST }} "echo 'TELEGRAM_PHONE=${{ secrets.TELEGRAM_PHONE }}' >> /home/dev/app/env/.env"
           ssh dev@${{ secrets.SSH_HOST }} "echo 'TELEGRAM_CHANNEL_ID=${{ secrets.TELEGRAM_CHANNEL_ID }}' >> /home/dev/app/env/.env"
@@ -64,23 +64,7 @@ jobs:
           ssh dev@${{ secrets.SSH_HOST }} "echo 'LOG_LEVEL=${{ secrets.LOG_LEVEL }}' >> /home/dev/app/env/.env"
           ssh dev@${{ secrets.SSH_HOST }} "echo 'LOG_FILE=${{ secrets.LOG_FILE }}' >> /home/dev/app/env/.env"
           ssh dev@${{ secrets.SSH_HOST }} "echo 'MEDIA_DIR=${{ secrets.MEDIA_DIR }}' >> /home/dev/app/env/.env"
-          ssh dev@${{ secrets.SSH_HOST }} "echo 'DATABASE_URL=postgresql://postgres:postgres@postgres:5432/data_processor_db' >> /home/dev/app/env/.env"
-          ssh dev@${{ secrets.SSH_HOST }} "echo 'KAFKA_TOPIC=telegram_channel_messages' >> /home/dev/app/env/.env"
           ssh dev@${{ secrets.SSH_HOST }} "echo 'TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}' >> /home/dev/app/env/.env"
-          ssh dev@${{ secrets.SSH_HOST }} "echo 'TRANSITION_START_TO_NIGHT=${{ secrets.TRANSITION_START_TO_NIGHT }}' >> /home/dev/app/env/.env"
-          ssh dev@${{ secrets.SSH_HOST }} "echo 'TRANSITION_END_TO_NIGHT=${{ secrets.TRANSITION_END_TO_NIGHT }}' >> /home/dev/app/env/.env"
-          ssh dev@${{ secrets.SSH_HOST }} "echo 'TRANSITION_START_TO_DAY=${{ secrets.TRANSITION_START_TO_DAY }}' >> /home/dev/app/env/.env"
-          ssh dev@${{ secrets.SSH_HOST }} "echo 'TRANSITION_END_TO_DAY=${{ secrets.TRANSITION_END_TO_DAY }}' >> /home/dev/app/env/.env"
-          ssh dev@${{ secrets.SSH_HOST }} "echo 'CHAT_DELAY_MIN_DAY=${{ secrets.CHAT_DELAY_MIN_DAY }}' >> /home/dev/app/env/.env"
-          ssh dev@${{ secrets.SSH_HOST }} "echo 'CHAT_DELAY_MAX_DAY=${{ secrets.CHAT_DELAY_MAX_DAY }}' >> /home/dev/app/env/.env"
-          ssh dev@${{ secrets.SSH_HOST }} "echo 'CHAT_DELAY_MIN_NIGHT=${{ secrets.CHAT_DELAY_MIN_NIGHT }}' >> /home/dev/app/env/.env"
-          ssh dev@${{ secrets.SSH_HOST }} "echo 'CHAT_DELAY_MAX_NIGHT=${{ secrets.CHAT_DELAY_MAX_NIGHT }}' >> /home/dev/app/env/.env"
-          ssh dev@${{ secrets.SSH_HOST }} "echo 'CHANNEL_DELAY_MIN_DAY=${{ secrets.CHANNEL_DELAY_MIN_DAY }}' >> /home/dev/app/env/.env"
-          ssh dev@${{ secrets.SSH_HOST }} "echo 'CHANNEL_DELAY_MAX_DAY=${{ secrets.CHANNEL_DELAY_MAX_DAY }}' >> /home/dev/app/env/.env"
-          ssh dev@${{ secrets.SSH_HOST }} "echo 'CHANNEL_DELAY_MIN_NIGHT=${{ secrets.CHANNEL_DELAY_MIN_NIGHT }}' >> /home/dev/app/env/.env"
-          ssh dev@${{ secrets.SSH_HOST }} "echo 'CHANNEL_DELAY_MAX_NIGHT=${{ secrets.CHANNEL_DELAY_MAX_NIGHT }}' >> /home/dev/app/env/.env"
-
-
 
       - name: Build and run docker-compose on server
         run: |

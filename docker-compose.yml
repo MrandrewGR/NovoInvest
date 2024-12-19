@@ -5,7 +5,8 @@ services:
     image: bitnami/zookeeper:3.8
     environment:
       ZOO_ENABLE_AUTH: "no"
-      ZOO_LISTEN_CLIENT_PORT: 2181
+      ZOO_STANDALONE_ENABLED: "yes"
+      ZOO_LISTEN_CLIENT_PORT: "2181"
     ports:
       - "2181:2181"
     healthcheck:
@@ -14,6 +15,7 @@ services:
       timeout: 5s
       retries: 5
       start_period: 60s
+
 
 
 

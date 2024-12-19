@@ -11,6 +11,9 @@ services:
 
   kafka:
     image: confluentinc/cp-kafka:7.4.0
+    depends_on:
+      zookeeper:
+        condition: service_healthy
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
@@ -18,9 +21,6 @@ services:
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
     ports:
       - "9092:9092"
-    depends_on:
-      zookeeper:
-        condition: service_healthy
     healthcheck:
       test: ["CMD", "kafka-topics", "--bootstrap-server", "kafka:9092", "--list"]
       interval: 10s
@@ -37,39 +37,44 @@ services:
       - "5432:5432"
 
   data-processor:
-    image: app-data-processor
     build:
-      context: .
-      dockerfile: Dockerfile-data-processor
+      context: ./services/data_processor
+      dockerfile: Dockerfile
+    env_file:
+      - ./env/.env
     depends_on:
       kafka:
         condition: service_healthy
       postgres:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD", "pg_isready", "-U", "postgres"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+    volumes:
+      - ./services/data_processor/logs:/app/logs
+    restart: unless-stopped
 
   tg_standard_bot:
-    image: app-tg_standard_bot
     build:
-      context: .
-      dockerfile: Dockerfile-tg_standard_bot
+      context: ./services/tg_standard_bot
+      dockerfile: Dockerfile
+    env_file:
+      - ./env/.env
     depends_on:
       kafka:
         condition: service_healthy
-      postgres:
-        condition: service_healthy
+    volumes:
+      - ./services/tg_standard_bot/app/logs:/app/logs
+    restart: unless-stopped
 
   tg_user_bot:
-    image: app-tg_user_bot
     build:
-      context: .
-      dockerfile: Dockerfile-tg_user_bot
+      context: ./services/tg_user_bot
+      dockerfile: Dockerfile
+    env_file:
+      - ./env/.env
     depends_on:
       kafka:
         condition: service_healthy
-      postgres:
-        condition: service_healthy
+    volumes:
+      - ./services/tg_user_bot/logs:/app/logs
+      - ./services/tg_user_bot/media:/app/media
+      - ./session_name.session:/app/session_name.session
+    restart: unless-stopped

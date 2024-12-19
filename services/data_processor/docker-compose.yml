@@ -47,7 +47,7 @@ services:
   tg_user_bot:
     build: ./services/tg_user_bot
     env_file:
-      - ./env/.env
+      - ./.env/..env
     depends_on:
       kafka:
         condition: service_healthy
@@ -59,7 +59,7 @@ services:
   tg_standard_bot:
     build: ./services/tg_standard_bot
     env_file:
-      - ./env/.env
+      - ./.env/..env
     depends_on:
       kafka:
         condition: service_healthy
@@ -70,7 +70,7 @@ services:
   data_processor:
     build: ./services/data_processor
     env_file:
-      - ./env/.env
+      - ./.env/..env
     depends_on:
       kafka:
         condition: service_healthy

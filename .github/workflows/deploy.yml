@@ -50,7 +50,7 @@ jobs:
       - name: Add user to Docker group
         run: ssh dev@${{ secrets.SSH_HOST }} "sudo usermod -aG docker dev"
 
-      - name: Create .env file on server
+      - name: Create ..env file on server
         run: |
           ssh dev@${{ secrets.SSH_HOST }} "mkdir -p /home/dev/app/env && cat > /home/dev/app/env/.env <<EOF
           TELEGRAM_API_ID=${{ secrets.TELEGRAM_API_ID }}

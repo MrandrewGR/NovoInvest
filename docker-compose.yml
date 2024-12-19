@@ -35,7 +35,7 @@ services:
     build:
       context: ./services/data_processor
     env_file:
-      - ./env/.env
+      - ./env/..env
     depends_on:
       - kafka
       - postgres
@@ -47,7 +47,7 @@ services:
     build:
       context: ./services/tg_standard_bot
     env_file:
-      - ./env/.env
+      - ./env/..env
     depends_on:
       - kafka
     volumes:
@@ -58,7 +58,7 @@ services:
     build:
       context: ./services/tg_user_bot
     env_file:
-      - ./env/.env
+      - ./env/..env
     depends_on:
       - kafka
       - postgres

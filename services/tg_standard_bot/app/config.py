@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = Field("INFO", env="LOG_LEVEL")
 
     class Config:
-        env_file = ".env"
+        env_file = "..env"
         env_file_encoding = 'utf-8'
 
 

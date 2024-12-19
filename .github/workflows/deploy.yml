@@ -1,5 +1,3 @@
-# File location: .github/workflows/deploy.yml
-
 name: Deploy to Hetzner
 
 on:
@@ -11,42 +9,22 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Create .env file on server
-        run: |
-          ssh -i ~/.ssh/id_ed25519 dev@${{ secrets.SSH_HOST }} "mkdir -p /home/dev/app/env && cat > /home/dev/app/env/.env <<EOF
-          TELEGRAM_API_ID=${{ secrets.TELEGRAM_API_ID }}
-          TELEGRAM_API_HASH=${{ secrets.TELEGRAM_API_HASH }}
-          TELEGRAM_PHONE=${{ secrets.TELEGRAM_PHONE }}
-          TELEGRAM_CHANNEL_ID=${{ secrets.TELEGRAM_CHANNEL_ID }}
-          TELEGRAM_CHAT_ID=${{ secrets.TELEGRAM_CHAT_ID }}
-          KAFKA_BOOTSTRAP_SERVERS=${{ secrets.KAFKA_BOOTSTRAP_SERVERS }}
-          KAFKA_CHANNEL_TOPIC=${{ secrets.KAFKA_CHANNEL_TOPIC }}
-          KAFKA_CHAT_TOPIC=${{ secrets.KAFKA_CHAT_TOPIC }}
-          LOG_LEVEL=${{ secrets.LOG_LEVEL }}
-          LOG_FILE=${{ secrets.LOG_FILE }}
-          MEDIA_DIR=${{ secrets.MEDIA_DIR }}
-          DATABASE_URL=postgresql://postgres:postgres@postgres:5432/data_processor_db
-          KAFKA_TOPIC=telegram_channel_messages
-          TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
-          EOF"
-
       - name: Checkout code
         uses: actions/checkout@v2
 
       - name: Install rsync
         run: sudo apt-get update && sudo apt-get install -y rsync
 
-      - name: Prepare SSH key
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
+      - name: Set up SSH Agent
+        uses: webfactory/ssh-agent@v0.5.3
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
       - name: Add known hosts
         run: ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
 
       - name: Test SSH Connection
-        run: ssh -i ~/.ssh/id_ed25519 dev@${{ secrets.SSH_HOST }} 'echo "SSH connection established"'
+        run: ssh dev@${{ secrets.SSH_HOST }} 'echo "SSH connection established"'
 
       - name: Decode and Save Session File
         run: |
@@ -55,24 +33,24 @@ jobs:
 
       - name: Copy code and session to server
         run: |
-          rsync -avz -e "ssh -i ~/.ssh/id_ed25519" --exclude '.git' --exclude '.github' ./ dev@${{ secrets.SSH_HOST }}:/home/dev/app/
-          rsync -avz -e "ssh -i ~/.ssh/id_ed25519" session_name.session dev@${{ secrets.SSH_HOST }}:/home/dev/app/session_name.session
+          rsync -avz --exclude '.git' --exclude '.github' ./ dev@${{ secrets.SSH_HOST }}:/home/dev/app/
+          rsync -avz session_name.session dev@${{ secrets.SSH_HOST }}:/home/dev/app/session_name.session
 
       - name: Install Docker and Docker Compose on server
         run: |
-          ssh -i ~/.ssh/id_ed25519 dev@${{ secrets.SSH_HOST }} "sudo apt-get update && sudo apt-get install -y ca-certificates curl gnupg lsb-release"
-          ssh -i ~/.ssh/id_ed25519 dev@${{ secrets.SSH_HOST }} "sudo mkdir -p /home/dev/.docker/cli-plugins/"
-          ssh -i ~/.ssh/id_ed25519 dev@${{ secrets.SSH_HOST }} "sudo chown -R dev:dev /home/dev/.docker/"
-          ssh -i ~/.ssh/id_ed25519 dev@${{ secrets.SSH_HOST }} "sudo -u dev curl -SL https://github.com/docker/compose/releases/download/v2.20.2/docker-compose-linux-x86_64 -o /home/dev/.docker/cli-plugins/docker-compose"
-          ssh -i ~/.ssh/id_ed25519 dev@${{ secrets.SSH_HOST }} "sudo chmod +x /home/dev/.docker/cli-plugins/docker-compose"
-          ssh -i ~/.ssh/id_ed25519 dev@${{ secrets.SSH_HOST }} "docker compose version"
+          ssh dev@${{ secrets.SSH_HOST }} "sudo apt-get update && sudo apt-get install -y ca-certificates curl gnupg lsb-release"
+          ssh dev@${{ secrets.SSH_HOST }} "sudo mkdir -p /home/dev/.docker/cli-plugins/"
+          ssh dev@${{ secrets.SSH_HOST }} "sudo chown -R dev:dev /home/dev/.docker/"
+          ssh dev@${{ secrets.SSH_HOST }} "sudo -u dev curl -SL https://github.com/docker/compose/releases/download/v2.20.2/docker-compose-linux-x86_64 -o /home/dev/.docker/cli-plugins/docker-compose"
+          ssh dev@${{ secrets.SSH_HOST }} "sudo chmod +x /home/dev/.docker/cli-plugins/docker-compose"
+          ssh dev@${{ secrets.SSH_HOST }} "docker compose version"
 
       - name: Add user to Docker group
-        run: ssh -i ~/.ssh/id_ed25519 dev@${{ secrets.SSH_HOST }} "sudo usermod -aG docker dev"
+        run: ssh dev@${{ secrets.SSH_HOST }} "sudo usermod -aG docker dev"
 
       - name: Create .env file on server
         run: |
-          ssh -i ~/.ssh/id_ed25519 dev@${{ secrets.SSH_HOST }} "cat > /home/dev/app/env/.env <<EOF
+          ssh dev@${{ secrets.SSH_HOST }} "mkdir -p /home/dev/app/env && cat > /home/dev/app/env/.env <<EOF
           TELEGRAM_API_ID=${{ secrets.TELEGRAM_API_ID }}
           TELEGRAM_API_HASH=${{ secrets.TELEGRAM_API_HASH }}
           TELEGRAM_PHONE=${{ secrets.TELEGRAM_PHONE }}
@@ -91,18 +69,18 @@ jobs:
 
       - name: Build and run docker-compose on server
         run: |
-          ssh -i ~/.ssh/id_ed25519 dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose down"
-          ssh -i ~/.ssh/id_ed25519 dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose build --no-cache"
-          ssh -i ~/.ssh/id_ed25519 dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose up -d"
+          ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose down"
+          ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose build --no-cache"
+          ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose up -d"
 
       - name: Check Docker Compose Status
         run: |
-          ssh -i ~/.ssh/id_ed25519 dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose ps"
+          ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose ps"
 
       - name: View Userbot Logs
         run: |
-          ssh -i ~/.ssh/id_ed25519 dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose logs userbot --tail 50"
+          ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose logs userbot --tail 50"
 
       - name: View Data Processor Logs
         run: |
-          ssh -i ~/.ssh/id_ed25519 dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose logs data-processor --tail 50"
+          ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose logs data-processor --tail 50"

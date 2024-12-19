@@ -11,9 +11,9 @@ class Settings(BaseSettings):
     LOG_FILE: str = Field("logs/bot.log", env="LOG_FILE")
     LOG_LEVEL: str = Field("INFO", env="LOG_LEVEL")
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = 'utf-8'
+    #class Config:
+    #    env_file = ".env"
+    #    env_file_encoding = 'utf-8'
 
 
 settings = Settings()

@@ -67,6 +67,18 @@ jobs:
           DATABASE_URL=postgresql://postgres:postgres@postgres:5432/data_processor_db
           KAFKA_TOPIC=telegram_channel_messages
           TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TRANSITION_START_TO_NIGHT=${{ secrets.TRANSITION_START_TO_NIGHT }}
+          TRANSITION_END_TO_NIGHT=${{ secrets.TRANSITION_END_TO_NIGHT }}
+          TRANSITION_START_TO_DAY=${{ secrets.TRANSITION_START_TO_DAY }}
+          TRANSITION_END_TO_DAY=${{ secrets.TRANSITION_END_TO_DAY }}
+          CHAT_DELAY_MIN_DAY=${{ secrets.CHAT_DELAY_MIN_DAY }}
+          CHAT_DELAY_MAX_DAY=${{ secrets.CHAT_DELAY_MAX_DAY }}
+          CHAT_DELAY_MIN_NIGHT=${{ secrets.CHAT_DELAY_MIN_NIGHT }}
+          CHAT_DELAY_MAX_NIGHT=${{ secrets.CHAT_DELAY_MAX_NIGHT }}
+          CHANNEL_DELAY_MIN_DAY=${{ secrets.CHANNEL_DELAY_MIN_DAY }}
+          CHANNEL_DELAY_MAX_DAY=${{ secrets.CHANNEL_DELAY_MAX_DAY }}
+          CHANNEL_DELAY_MIN_NIGHT=${{ secrets.CHANNEL_DELAY_MIN_NIGHT }}
+          CHANNEL_DELAY_MAX_NIGHT=${{ secrets.CHANNEL_DELAY_MAX_NIGHT }}
           EOF"
 
       - name: Build and run docker-compose on server

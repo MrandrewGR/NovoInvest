@@ -6,7 +6,7 @@ services:
   userbot:
     build: .
     env_file:
-      - ./env/.env
+      - ./env/env
     volumes:
       - ./logs:/app/logs
       - ./media:/app/media

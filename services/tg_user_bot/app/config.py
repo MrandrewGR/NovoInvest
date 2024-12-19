@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     CHANNEL_DELAY_MAX_NIGHT: float = 20.0
 
     class Config:
-        env_file = "..env"
+        env_file = ".env"
         env_file_encoding = 'utf-8'
 
 settings = Settings()

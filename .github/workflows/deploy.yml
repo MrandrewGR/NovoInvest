@@ -60,8 +60,9 @@ jobs:
           TELEGRAM_CHANNEL_ID=${{ secrets.TELEGRAM_CHANNEL_ID }}
           TELEGRAM_CHAT_ID=${{ secrets.TELEGRAM_CHAT_ID }}
           TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
+          KAFKA_BOOTSTRAP_SERVERS=kafka:9092
           EOF"
-
+          
 
       - name: Build and run docker-compose on server
         run: |

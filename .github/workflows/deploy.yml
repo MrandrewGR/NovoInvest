@@ -71,18 +71,4 @@ jobs:
 
       - name: Build and run docker-compose on server
         run: |
-          ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose down"
-          ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose build --no-cache"
-          ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose up -d"
-
-      - name: Check Docker Compose Status
-        run: |
-          ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose ps"
-
-      - name: View Userbot Logs
-        run: |
-          ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose logs tg_user_bot --tail 50"
-
-      - name: View Data Processor Logs
-        run: |
-          ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose logs data-processor --tail 50"
+          ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker 

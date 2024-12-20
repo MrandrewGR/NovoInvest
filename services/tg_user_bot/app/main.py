@@ -165,4 +165,4 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         logging.getLogger("userbot").info("Userbot остановлен по запросу пользователя.")
     except Exception as e:
-        logging.getLogger("userbot").exception(f"Неожиданная ошибка при запуске main: {e}")
+        logging.getLogger("userbot").exception(f"Неожиданная ошибка при запуске main!: {e}")

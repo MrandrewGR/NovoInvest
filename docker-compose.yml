@@ -75,10 +75,10 @@ services:
       - ./services/tg_user_bot/logs:/app/logs
       - ./services/tg_user_bot/media:/app/media
       - ./session_name.session:/app/session_name.session
-    command: ["wait-for-it.sh", "kafka:9092", "--", "python", "-m", "app.main"]
     restart: no
     networks:
       - app_app_network
+
 
 networks:
   app_app_network:

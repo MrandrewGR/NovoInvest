@@ -9,9 +9,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Шаг 1: Клонирование репозитория
+      # Шаг 1: Клонирование репозитория с полной историей
       - name: Checkout code
         uses: actions/checkout@v2
+        with:
+          fetch-depth: 0  # Загружает всю историю коммитов
 
       # Шаг 2: Настройка Git для обнаружения изменений
       - name: Set up Git

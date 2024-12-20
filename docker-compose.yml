@@ -8,6 +8,7 @@ services:
       - "2181:2181"
     networks:
       - app_app_network
+
   kafka:
     image: confluentinc/cp-kafka:7.4.0
     depends_on:
@@ -22,6 +23,7 @@ services:
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
     networks:
       - app_app_network
+
   postgres:
     image: postgres:15
     environment:
@@ -32,19 +34,21 @@ services:
       - "5432:5432"
     networks:
       - app_app_network
+
   data-processor:
     build:
-      context: ./services/data_processor
+      context: ./services/app-data-processor
     env_file:
       - ./env/.env
     depends_on:
       - kafka
       - postgres
     volumes:
-      - ./services/data_processor/logs:/app/logs
+      - ./services/app-data-processor/logs:/app/logs
     restart: unless-stopped
     networks:
       - app_app_network
+
   tg_standard_bot:
     build:
       context: ./services/tg_standard_bot
@@ -57,13 +61,14 @@ services:
     restart: no
     networks:
       - app_app_network
+
   tg_user_bot:
     build:
       context: ./services/tg_user_bot
     env_file:
       - ./env/.env
     environment:
-      - LOG_DIR=/app/logs  # Добавьте эту строку
+      - LOG_DIR=/app/logs
     depends_on:
       - kafka
       - postgres
@@ -74,6 +79,7 @@ services:
     restart: no
     networks:
       - app_app_network
+
 networks:
   app_app_network:
     name: app_app_network

@@ -97,21 +97,26 @@ jobs:
           KAFKA_BOOTSTRAP_SERVERS=kafka:9092
           EOF"
 
-      # Шаг 12: Деплой изменённых микросервисов
+      # Шаг 14: Деплой изменённых микросервисов
       - name: Deploy changed services
         run: |
           if [ -z "$CHANGED_SERVICES" ]; then
-            echo "Нет изменений в сервисах. Пропуск деплоя."
+            echo "No services changed. Exiting deployment."
             exit 0
           fi
-
+      
           for service in $CHANGED_SERVICES; do
-            echo "Деплой сервиса: $service"
+            echo "Deploying service: $service"
+            # Преобразуем имя папки в имя сервиса в docker-compose.yml
+            SERVICE_NAME=$(echo "$service" | sed 's/data_processor/data-processor/')
+            
             # Копирование кода микросервиса на сервер
             rsync -avz --exclude '.git' --exclude '.github' services/$service/ dev@${{ secrets.SSH_HOST }}:/home/dev/app/services/$service/
+            
             # Перезапуск микросервиса с пересборкой
-            ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose up -d --build --force-recreate $service" | tee deploy_${service}.log
+            ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose up -d --build --force-recreate $SERVICE_NAME" | tee deploy_${service}.log
           done
+
 
       # Шаг 13: Проверка статуса Docker Compose
       - name: Check Docker Compose Status

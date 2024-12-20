@@ -72,7 +72,7 @@ async def run_userbot():
                 if message is None:
                     break  # Завершение задачи
                 logger.info(f"Отправка сообщения в Kafka: {message}")
-                await kafka_producer.send_message(settings.KAFKA_TOPIC, message)
+                await kafka_producer.send_message(settings.KAFKA_TOPIC, json.dumps(message))
                 logger.info("Сообщение успешно отправлено в Kafka.")
                 message_buffer.task_done()
             except Exception as e:
@@ -94,7 +94,7 @@ async def run_userbot():
             try:
                 async for message in kafka_consumer.listen():
                     try:
-                        instr = json.loads(message.value)
+                        instr = json.loads(message.value.decode('utf-8'))
                         logger.info(f"Получена инструкция из Kafka: {instr}")
                         await handle_instruction(instr)
                     except json.JSONDecodeError:
@@ -107,12 +107,20 @@ async def run_userbot():
                 kafka_consumer = None
                 await asyncio.sleep(RECONNECT_INTERVAL)
 
+    async def fetch_unread_messages():
+        # Обработка непрочитанных сообщений в чатах
+        chats = [settings.TELEGRAM_CHAT_ID, settings.TELEGRAM_CHANNEL_ID]
+        for chat_id in chats:
+            try:
+                async for message in client.iter_messages(chat_id, unread=True):
+                    await message_buffer.put(message.to_dict())
+                    logger.info(f"Непрочитанное сообщение добавлено в буфер: {message.id} из чата {chat_id}")
+            except Exception as e:
+                logger.exception(f"Ошибка при загрузке непрочитанных сообщений из чата {chat_id}: {e}")
+
     counter = MessageCounter(client)
     userbot_active = asyncio.Event()
     userbot_active.set()
-
-    register_chat_handler(client, message_buffer, counter, userbot_active)
-    register_channel_handler(client, message_buffer, counter, userbot_active)
 
     def shutdown_signal_handler(signum, frame):
         logger.info(f"Получен сигнал завершения ({signum}), инициирование плавного завершения...")
@@ -140,9 +148,17 @@ async def run_userbot():
         if not await client.is_user_authorized():
             logger.error("Telegram клиент не авторизован. Проверьте корректность session_name.session.")
             shutdown_event.set()
+            return
 
         me = await client.get_me()
         logger.info(f"Userbot запущен как: @{me.username} (ID: {me.id})")
+
+        # Регистрация обработчиков после авторизации
+        register_chat_handler(client, message_buffer, counter, userbot_active)
+        register_channel_handler(client, message_buffer, counter, userbot_active)
+
+        # Загрузка непрочитанных сообщений
+        await fetch_unread_messages()
 
         # Создание асинхронных задач для producer и consumer
         producer = asyncio.create_task(producer_task())

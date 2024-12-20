@@ -5,21 +5,25 @@ import asyncio
 from telethon import events
 from telethon.errors import FloodWaitError
 from ..config import settings
-from ..kafka_producer import KafkaMessageProducer
 from ..utils import human_like_delay, get_delay_settings
 from ..state import MessageCounter
 
 logger = logging.getLogger("handlers.channel_handler")
 
-def register_channel_handler(client, kafka_producer, counter: MessageCounter, userbot_active: asyncio.Event):
+def register_channel_handler(client, message_buffer, counter: MessageCounter, userbot_active: asyncio.Event):
+    if not settings.TELEGRAM_CHANNEL_ID:
+        logger.error("TELEGRAM_CHANNEL_ID не задан в настройках.")
+        return
+
     @client.on(events.NewMessage(chats=[settings.TELEGRAM_CHANNEL_ID]))
     async def handler_channel(event):
         if not userbot_active.is_set():
             logger.info("Userbot приостановлен. Сообщение игнорируется.")
             return
-        await process_message(event, kafka_producer, settings.KAFKA_CHANNEL_TOPIC, "канала", counter)
+        logger.info(f"В канале новое сообщение: {event.message.id}")
+        await process_message(event, message_buffer, settings.KAFKA_CHANNEL_TOPIC, "канала", counter)
 
-async def process_message(event, kafka_producer: KafkaMessageProducer, topic, source, counter: MessageCounter):
+async def process_message(event, message_buffer, topic, source, counter: MessageCounter):
     try:
         msg = event.message
         message_data = msg.to_dict()
@@ -43,8 +47,8 @@ async def process_message(event, kafka_producer: KafkaMessageProducer, topic, so
             "downloaded_media": downloaded_media_path
         }
 
-        kafka_producer.send_message(topic, result_data)
-        logger.info(f"Сообщение отправлено в Kafka топик '{topic}': {msg.id}")
+        await message_buffer.put(result_data)
+        logger.info(f"Сообщение добавлено в буфер для Kafka топика '{topic}': {msg.id}")
 
         await counter.increment()
 
@@ -54,5 +58,7 @@ async def process_message(event, kafka_producer: KafkaMessageProducer, topic, so
     except FloodWaitError as e:
         logger.warning(f"FloodWaitError для {source}: ждать {e.seconds} секунд")
         await asyncio.sleep(e.seconds + 5)
+    except asyncio.QueueFull:
+        logger.error("Буфер сообщений переполнен. Не удалось добавить сообщение.")
     except Exception as e:
         logger.exception(f"Неожиданная ошибка в обработчике сообщений {source}: {e}")

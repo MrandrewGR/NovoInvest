@@ -1,7 +1,6 @@
 /Users/andreigrishin/Documents/GitHub/NovoInvest
 ├── docker-compose.yml
 ├── env
-│   └── env
 ├── requirements
 │   └── requirements.txt
 ├── services
@@ -16,7 +15,6 @@
 │   │   │   ├── consumer.py
 │   │   │   ├── database.py
 │   │   │   └── models.py
-│   │   ├── docker-compose.yml
 │   │   ├── logs
 │   │   ├── migrations
 │   │   │   ├── README
@@ -55,12 +53,13 @@
 │       │   ├── main.py
 │       │   ├── state.py
 │       │   └── utils.py
-│       ├── docker-compose.yml
 │       ├── media
-│       └── requirements.txt
+│       ├── requirements.txt
+│       └── wait-for-it.sh
 ├── tree_structure.txt
 └── utils
     ├── get structure.py
+    ├── get_chat_id.py
     ├── get_session.py
     ├── session_b64.txt
     ├── session_name.session

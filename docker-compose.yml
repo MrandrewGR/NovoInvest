@@ -45,13 +45,15 @@ services:
       context: ./services/app-data-processor
     env_file:
       - ./env/.env
+    environment:
+      - PYTHONPATH=/app/app
     depends_on:
       kafka:
         condition: service_healthy
       postgres:
         condition: service_healthy
     volumes:
-      - ./services/app-data-processor/logs:/app/logs
+      - ./services/data_processor/logs:/app/logs
     restart: unless-stopped
     networks:
       - app_app_network

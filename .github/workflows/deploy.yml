@@ -21,14 +21,15 @@ jobs:
       - name: Determine changed services
         id: changes
         run: |
-          # Предполагается, что каждый микросервис находится в отдельной папке внутри /services
-          CHANGED_SERVICES=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep '^services/' | awk -F/ '{print $2}' | uniq)
+          # Определяем изменения только в папке services/
+          CHANGED_SERVICES=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} -- services/ | grep '^services/' | awk -F/ '{print $2}' | uniq)
           echo "CHANGED_SERVICES=$CHANGED_SERVICES" >> $GITHUB_ENV
 
-      # Шаг 4: Отладка - вывод изменённых микросервисов
-      - name: Debug Changed Services
+      # Шаг 4: Отладка - вывод изменённых микросервисов и списка изменённых файлов
+      - name: Debug Git Diff
         run: |
-          echo "Изменённые сервисы: $CHANGED_SERVICES"
+          echo "CHANGED_SERVICES: $CHANGED_SERVICES"
+          git diff --name-only ${{ github.event.before }} ${{ github.sha }} -- services/
 
       # Шаг 5: Установка rsync и других зависимостей
       - name: Install rsync
@@ -67,13 +68,13 @@ jobs:
             fi
 
             # Проверка установки Docker Compose
-            if ! command -v docker-compose &> /dev/null
+            if ! command -v docker compose &> /dev/null
             then
-              sudo curl -L "https://github.com/docker/compose/releases/download/v2.20.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-              sudo chmod +x /usr/local/bin/docker-compose
+              sudo mkdir -p /home/dev/.docker/cli-plugins/
+              sudo curl -SL https://github.com/docker/compose/releases/download/v2.20.2/docker-compose-linux-x86_64 -o /home/dev/.docker/cli-plugins/docker-compose
+              sudo chmod +x /home/dev/.docker/cli-plugins/docker-compose
             fi
-            docker --version
-            docker-compose --version
+            docker compose version
           EOF
 
       # Шаг 10: Добавление пользователя в группу Docker
@@ -107,18 +108,18 @@ jobs:
             # Копирование кода микросервиса на сервер
             rsync -avz --exclude '.git' --exclude '.github' services/$service/ dev@${{ secrets.SSH_HOST }}:/home/dev/app/services/$service/
             # Перезапуск микросервиса с пересборкой
-            ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker-compose up -d --build --force-recreate $service" | tee deploy_${service}.log
+            ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose up -d --build --force-recreate $service" | tee deploy_${service}.log
           done
 
       # Шаг 13: Проверка статуса Docker Compose
       - name: Check Docker Compose Status
         run: |
-          ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker-compose ps"
+          ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose ps"
 
       # Шаг 14: Просмотр логов для изменённых микросервисов
       - name: View Logs for Changed Services
         run: |
           for service in $CHANGED_SERVICES; do
             echo "Логи сервиса: $service"
-            ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker-compose logs $service --tail 50"
+            ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose logs $service --tail 50"
           done

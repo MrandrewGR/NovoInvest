@@ -50,6 +50,9 @@ async def process_message(event, message_buffer, topic, source, counter: Message
         await message_buffer.put(result_data)
         logger.info(f"Сообщение добавлено в буфер для Kafka топика '{topic}': {msg.id}")
 
+        # Обновление последнего обработанного сообщения
+        counter.update_last_message_id(event.chat_id, msg.id)
+
         await counter.increment()
 
         delay_min, delay_max = get_delay_settings("chat")

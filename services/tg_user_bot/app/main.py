@@ -6,6 +6,7 @@ import os
 import signal
 import json
 from telethon import TelegramClient, events
+from telethon.errors import FloodWaitError
 from .config import settings
 from .logger import setup_logging
 from .kafka_producer import KafkaMessageProducer
@@ -108,13 +109,20 @@ async def run_userbot():
                 await asyncio.sleep(RECONNECT_INTERVAL)
 
     async def fetch_unread_messages():
-        # Обработка непрочитанных сообщений в чатах
+        # Обработка непрочитанных сообщений в чатах и каналах
         chats = [settings.TELEGRAM_CHAT_ID, settings.TELEGRAM_CHANNEL_ID]
         for chat_id in chats:
             try:
-                async for message in client.iter_messages(chat_id, unread=True):
+                # Получение последнего обработанного сообщения из состояния
+                last_message_id = counter.get_last_message_id(chat_id)
+
+                # Если нет информации о последнем сообщении, обработать последние 100 сообщений
+                limit = None if last_message_id else 100
+
+                async for message in client.iter_messages(chat_id, min_id=last_message_id, reverse=True, limit=limit):
                     await message_buffer.put(message.to_dict())
                     logger.info(f"Непрочитанное сообщение добавлено в буфер: {message.id} из чата {chat_id}")
+                    counter.update_last_message_id(chat_id, message.id)
             except Exception as e:
                 logger.exception(f"Ошибка при загрузке непрочитанных сообщений из чата {chat_id}: {e}")
 

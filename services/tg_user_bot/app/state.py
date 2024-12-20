@@ -3,6 +3,8 @@
 import asyncio
 import logging
 from telethon import TelegramClient
+import json
+import os
 
 logger = logging.getLogger("state")
 
@@ -12,6 +14,34 @@ class MessageCounter:
         self.threshold = threshold
         self.count = 0
         self.lock = asyncio.Lock()
+        self.state_file = "/app/state.json"
+        self.state = self.load_state()
+
+    def load_state(self):
+        if os.path.exists(self.state_file):
+            try:
+                with open(self.state_file, 'r') as f:
+                    state = json.load(f)
+                logger.debug("Состояние успешно загружено.")
+                return state
+            except Exception as e:
+                logger.exception(f"Не удалось загрузить состояние: {e}")
+        return {}
+
+    def save_state(self):
+        try:
+            with open(self.state_file, 'w') as f:
+                json.dump(self.state, f)
+            logger.debug("Состояние успешно сохранено.")
+        except Exception as e:
+            logger.exception(f"Не удалось сохранить состояние: {e}")
+
+    def get_last_message_id(self, chat_id):
+        return self.state.get(str(chat_id))
+
+    def update_last_message_id(self, chat_id, message_id):
+        self.state[str(chat_id)] = message_id
+        self.save_state()
 
     async def increment(self):
         async with self.lock:

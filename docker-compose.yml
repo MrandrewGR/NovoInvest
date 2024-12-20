@@ -7,6 +7,8 @@ services:
       ZOOKEEPER_CLIENT_PORT: 2181
     ports:
       - "2181:2181"
+    networks:
+      - app_network
 
   kafka:
     image: confluentinc/cp-kafka:7.4.0
@@ -20,7 +22,8 @@ services:
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
       KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-
+    networks:
+      - app_network
 
   postgres:
     image: postgres:15
@@ -30,6 +33,8 @@ services:
       POSTGRES_DB: data_processor_db
     ports:
       - "5432:5432"
+    networks:
+      - app_network
 
   data-processor:
     build:
@@ -42,6 +47,8 @@ services:
     volumes:
       - ./services/data_processor/logs:/app/logs
     restart: unless-stopped
+    networks:
+      - app_network
 
   tg_standard_bot:
     build:
@@ -53,6 +60,8 @@ services:
     volumes:
       - ./services/tg_standard_bot/app/logs:/app/logs
     restart: no
+    networks:
+      - app_network
 
   tg_user_bot:
     build:
@@ -67,3 +76,9 @@ services:
       - ./services/tg_user_bot/media:/app/media
       - ./session_name.session:/app/session_name.session
     restart: no
+    networks:
+      - app_network
+
+networks:
+  app_network:
+    driver: bridge

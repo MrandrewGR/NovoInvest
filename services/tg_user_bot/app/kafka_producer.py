@@ -1,33 +1,37 @@
 # File location: services/tg_user_bot/app/kafka_producer.py
 
 import logging
-import json
-from aiokafka import AIOKafkaProducer
+from kafka import KafkaProducer
 from .config import settings
-
-logger = logging.getLogger("kafka_producer")
 
 class KafkaMessageProducer:
     def __init__(self):
+        self.logger = logging.getLogger("kafka_producer")
         self.producer = None
 
     async def initialize(self):
-        self.producer = AIOKafkaProducer(
-            bootstrap_servers=settings.KAFKA_BOOTSTRAP_SERVERS,
-            value_serializer=lambda v: json.dumps(v).encode('utf-8')
-        )
-        await self.producer.start()
-        logger.info("Kafka producer инициализирован.")
-
-    async def send_message(self, topic: str, message: dict):
         try:
-            logger.debug(f"Отправка сообщения в топик '{topic}': {message}")
-            await self.producer.send_and_wait(topic, value=message)
-            logger.info("Сообщение успешно отправлено в Kafka.")
+            self.producer = KafkaProducer(
+                bootstrap_servers=settings.KAFKA_BOOTSTRAP_SERVERS,
+                api_version=(2, 5, 0)
+            )
+            self.logger.info("KafkaProducer создан и подключен к брокеру.")
         except Exception as e:
-            logger.exception(f"Не удалось отправить сообщение в Kafka: {e}")
+            self.logger.error(f"Ошибка при создании KafkaProducer: {e}")
+            raise
+
+    async def send_message(self, topic, message):
+        if self.producer is None:
+            raise Exception("Kafka producer не инициализирован.")
+        try:
+            future = self.producer.send(topic, message.encode('utf-8'))
+            record_metadata = future.get(timeout=10)
+            self.logger.info(f"Сообщение отправлено в топик {record_metadata.topic}, партиция {record_metadata.partition}, смещение {record_metadata.offset}")
+        except Exception as e:
+            self.logger.error(f"Ошибка при отправке сообщения: {e}")
+            raise
 
     async def close(self):
         if self.producer:
-            await self.producer.stop()
-            logger.info("Kafka producer закрыт.")
+            self.producer.close()
+            self.logger.info("KafkaProducer закрыт.")

@@ -1,37 +1,36 @@
 # File location: services/tg_user_bot/app/kafka_consumer.py
 
 import logging
-import json
-from aiokafka import AIOKafkaConsumer
+from kafka import KafkaConsumer
 from .config import settings
-
-logger = logging.getLogger("kafka_consumer")
 
 class KafkaMessageConsumer:
     def __init__(self):
+        self.logger = logging.getLogger("kafka_consumer")
         self.consumer = None
 
     async def initialize(self):
-        self.consumer = AIOKafkaConsumer(
-            settings.KAFKA_INSTRUCTION_TOPIC,
-            bootstrap_servers=settings.KAFKA_BOOTSTRAP_SERVERS,
-            auto_offset_reset='earliest',
-            enable_auto_commit=True,
-            group_id='userbot_group',
-            value_deserializer=lambda m: m.decode('utf-8')
-        )
-        await self.consumer.start()
-        logger.info("Kafka consumer инициализирован и слушает тему '%s'.", settings.KAFKA_INSTRUCTION_TOPIC)
+        try:
+            self.consumer = KafkaConsumer(
+                settings.KAFKA_INSTRUCTION_TOPIC,
+                bootstrap_servers=settings.KAFKA_BOOTSTRAP_SERVERS,
+                group_id='userbot_group',
+                auto_offset_reset='earliest',
+                enable_auto_commit=True,
+                api_version=(2, 5, 0)
+            )
+            self.logger.info("KafkaConsumer создан и подключен к брокеру.")
+        except Exception as e:
+            self.logger.error(f"Ошибка при создании KafkaConsumer: {e}")
+            raise
 
     async def listen(self):
-        try:
-            async for message in self.consumer:
-                yield message
-        except Exception as e:
-            logger.exception(f"Ошибка в Kafka consumer: {e}")
-            raise
+        if self.consumer is None:
+            raise Exception("Kafka consumer не инициализирован.")
+        for message in self.consumer:
+            yield message
 
     async def close(self):
         if self.consumer:
-            await self.consumer.stop()
-            logger.info("Kafka consumer закрыт.")
+            self.consumer.close()
+            self.logger.info("KafkaConsumer закрыт.")

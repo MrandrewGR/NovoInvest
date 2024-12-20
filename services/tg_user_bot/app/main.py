@@ -66,7 +66,7 @@ async def run_userbot():
                 message = await message_buffer.get()
                 if message is None:
                     break  # Завершение задачи
-                kafka_producer.send(message)
+                kafka_producer.send_message(settings.KAFKA_TOPIC, message)
                 message_buffer.task_done()
             except Exception as e:
                 logger.error(f"Ошибка при отправке сообщения в Kafka: {e}. Сообщение будет повторно добавлено в буфер.")

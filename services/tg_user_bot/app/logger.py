@@ -1,5 +1,5 @@
 # File location: services/tg_user_bot/app/logger.py
-# Восстановленная сложная структура логирования для tg_user_bot
+# Улучшенная структура логирования для tg_user_bot
 
 import logging
 import os
@@ -11,7 +11,7 @@ def setup_logging():
     log_dir = "logs"
     ensure_dir(log_dir)
 
-    # Настройка корневого логгера
+    # Настройка корневого логгера с StreamHandler
     logging.basicConfig(
         level=getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO),
         format='%(asctime)s %(levelname)s [%(name)s]: %(message)s',
@@ -25,6 +25,7 @@ def setup_logging():
         "handlers.chat_handler": os.path.join(log_dir, "chat", "chat_handler.log"),
         "handlers.channel_handler": os.path.join(log_dir, "channel", "channel_handler.log"),
         "kafka_producer": os.path.join(log_dir, "kafka_producer.log"),
+        "kafka_consumer": os.path.join(log_dir, "kafka_consumer.log"),
         "utils": os.path.join(log_dir, "utils.log"),
         "userbot": os.path.join(log_dir, "userbot.log")
     }
@@ -37,11 +38,12 @@ def setup_logging():
         logger = logging.getLogger(logger_name)
         logger.setLevel(getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO))
         logger.addHandler(file_handler)
+        logger.propagate = False  # Предотвращает отправку логов в корневой логгер
 
-    # Основной логгер для пользовательского приложения
+    # Основной логгер для пользовательского приложения (userbot)
     userbot_logger = logging.getLogger("userbot")
-    # Добавляем файл и стрим
-    userbot_logger.addHandler(logging.FileHandler(module_handlers["userbot"]))
+    # Добавляем только StreamHandler, FileHandler уже добавлен в цикле выше
     userbot_logger.addHandler(logging.StreamHandler())
+    userbot_logger.propagate = False
 
     return userbot_logger

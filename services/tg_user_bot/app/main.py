@@ -5,7 +5,7 @@ import logging
 import os
 import signal
 import json
-from telethon import TelegramClient
+from telethon import TelegramClient, events
 from .config import settings
 from .logger import setup_logging
 from .kafka_producer import KafkaMessageProducer
@@ -66,7 +66,9 @@ async def run_userbot():
                 message = await message_buffer.get()
                 if message is None:
                     break  # Завершение задачи
+                logger.info(f"Отправка сообщения в Kafka: {message}")
                 kafka_producer.send_message(settings.KAFKA_TOPIC, message)
+                logger.info("Сообщение успешно отправлено в Kafka.")
                 message_buffer.task_done()
             except Exception as e:
                 logger.error(f"Ошибка при отправке сообщения в Kafka: {e}. Сообщение будет повторно добавлено в буфер.")
@@ -88,6 +90,7 @@ async def run_userbot():
                 async for message in kafka_consumer.listen():
                     try:
                         instr = json.loads(message.value)
+                        logger.info(f"Получена инструкция из Kafka: {instr}")
                         await handle_instruction(instr)
                     except json.JSONDecodeError:
                         logger.error("Не удалось декодировать сообщение инструкции.")
@@ -152,8 +155,10 @@ async def run_userbot():
         await client.disconnect()
         if kafka_producer:
             kafka_producer.close()
+            logger.info("Kafka producer закрыт.")
         if kafka_consumer:
             kafka_consumer.close()
+            logger.info("Kafka consumer закрыт.")
         logger.info("Сервис Userbot завершил работу корректно.")
 
 if __name__ == "__main__":

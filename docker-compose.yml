@@ -116,10 +116,11 @@ jobs:
             exit 0
           fi
 
+          # Копирование обновлённого docker-compose.yml на сервер
+          rsync -avz docker-compose.yml dev@${{ secrets.SSH_HOST }}:/home/dev/app/docker-compose.yml
+
           for service in $CHANGED_SERVICES; do
             echo "Deploying service: $service"
-            # Копирование кода микросервиса на сервер
-            rsync -avz --exclude '.git' --exclude '.github' services/$service/ dev@${{ secrets.SSH_HOST }}:/home/dev/app/services/$service/
             # Перезапуск микросервиса с пересборкой
             ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose up -d --build --force-recreate $service" | tee deploy_${service}.log
           done

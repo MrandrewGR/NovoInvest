@@ -31,6 +31,8 @@ async def run_userbot():
     kafka_producer = None
     kafka_consumer = None
 
+    shutdown_event = asyncio.Event()
+
     async def initialize_kafka_producer():
         nonlocal kafka_producer
         while not shutdown_event.is_set():
@@ -54,6 +56,7 @@ async def run_userbot():
                 await asyncio.sleep(RECONNECT_INTERVAL)
 
     async def producer_task():
+        nonlocal kafka_producer
         while not shutdown_event.is_set():
             if kafka_producer is None:
                 await initialize_kafka_producer()
@@ -75,6 +78,7 @@ async def run_userbot():
                 await asyncio.sleep(RECONNECT_INTERVAL)
 
     async def consumer_task():
+        nonlocal kafka_consumer
         while not shutdown_event.is_set():
             if kafka_consumer is None:
                 await initialize_kafka_consumer()
@@ -100,8 +104,6 @@ async def run_userbot():
 
     register_chat_handler(client, message_buffer, counter, userbot_active)
     register_channel_handler(client, message_buffer, counter, userbot_active)
-
-    shutdown_event = asyncio.Event()
 
     def shutdown_signal_handler(signum, frame):
         logger.info(f"Получен сигнал завершения ({signum}), инициирование плавного завершения...")
@@ -133,6 +135,7 @@ async def run_userbot():
         me = await client.get_me()
         logger.info(f"Userbot запущен как: @{me.username} (ID: {me.id})")
 
+        # Создание асинхронных задач для producer и consumer
         producer = asyncio.create_task(producer_task())
         consumer = asyncio.create_task(consumer_task())
 

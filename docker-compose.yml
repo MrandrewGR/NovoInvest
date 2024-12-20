@@ -81,4 +81,5 @@ services:
 
 networks:
   app_app_network:
+    name: app_app_network
     driver: bridge

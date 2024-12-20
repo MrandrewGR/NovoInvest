@@ -1,14 +1,12 @@
-# File location: services/tg_user_bot/app/logger.py
-# Улучшенная структура логирования для tg_user_bot
-
 import logging
 import os
 from .utils import ensure_dir
 from .config import settings
+from logging.handlers import RotatingFileHandler
 
 def setup_logging():
-    # Основная директория для логов
-    log_dir = "logs"
+    # Используем переменную окружения для пути к логам
+    log_dir = os.getenv("LOG_DIR", "/app/logs")
     ensure_dir(log_dir)
 
     # Настройка корневого логгера с StreamHandler
@@ -31,19 +29,28 @@ def setup_logging():
     }
 
     for logger_name, file_path in module_handlers.items():
-        ensure_dir(os.path.dirname(file_path))
-        file_handler = logging.FileHandler(file_path)
-        formatter = logging.Formatter('%(asctime)s %(levelname)s [%(name)s]: %(message)s')
-        file_handler.setFormatter(formatter)
-        logger = logging.getLogger(logger_name)
-        logger.setLevel(getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO))
-        logger.addHandler(file_handler)
-        logger.propagate = False  # Предотвращает отправку логов в корневой логгер
+        try:
+            ensure_dir(os.path.dirname(file_path))
+            file_handler = RotatingFileHandler(
+                file_path,
+                maxBytes=10*1024*1024,  # 10 MB
+                backupCount=5
+            )
+            formatter = logging.Formatter('%(asctime)s %(levelname)s [%(name)s]: %(message)s')
+            file_handler.setFormatter(formatter)
+            logger = logging.getLogger(logger_name)
+            logger.setLevel(getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO))
+            logger.addHandler(file_handler)
+            logger.propagate = False
+        except Exception as e:
+            print(f"Ошибка при настройке логгера {logger_name}: {e}")
 
     # Основной логгер для пользовательского приложения (userbot)
     userbot_logger = logging.getLogger("userbot")
-    # Добавляем только StreamHandler, FileHandler уже добавлен в цикле выше
     userbot_logger.addHandler(logging.StreamHandler())
     userbot_logger.propagate = False
+
+    # Тестовое сообщение
+    userbot_logger.info("Логирование настроено корректно.")
 
     return userbot_logger

@@ -1,5 +1,3 @@
-# File location: .github/workflows/deploy.yml
-
 name: Deploy to Hetzner
 
 on:
@@ -14,7 +12,18 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v2
 
-      - name: Install rsync
+      - name: Set up Git for detecting changes
+        run: |
+          git fetch origin main
+
+      - name: Determine changed containers
+        id: changes
+        run: |
+          # Предполагается, что каждый контейнер находится в отдельной папке внутри /containers
+          CHANGED_CONTAINERS=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep '^containers/' | awk -F/ '{print $2}' | uniq)
+          echo "CHANGED_CONTAINERS=$CHANGED_CONTAINERS" >> $GITHUB_ENV
+
+      - name: Install rsync and other dependencies
         run: sudo apt-get update && sudo apt-get install -y rsync
 
       - name: Set up SSH Agent
@@ -33,9 +42,8 @@ jobs:
           echo "${{ secrets.SESSION_FILE_BASE64 }}" | base64 --decode > session_name.session
           chmod 600 session_name.session
 
-      - name: Copy code and session to server
+      - name: Copy session to server
         run: |
-          rsync -avz --exclude '.git' --exclude '.github' ./ dev@${{ secrets.SSH_HOST }}:/home/dev/app/
           rsync -avz session_name.session dev@${{ secrets.SSH_HOST }}:/home/dev/app/session_name.session
 
       - name: Install Docker and Docker Compose on server
@@ -62,22 +70,24 @@ jobs:
           TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
           KAFKA_BOOTSTRAP_SERVERS=kafka:9092
           EOF"
-          
 
-      - name: Build and run docker-compose on server
+      - name: Deploy changed containers
         run: |
-          ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose down --remove-orphans"
-          ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose build --no-cache"
-          ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose up -d"
+          for container in $CHANGED_CONTAINERS; do
+            echo "Deploying container: $container"
+            # Копирование кода контейнера на сервер
+            rsync -avz --exclude '.git' --exclude '.github' containers/$container/ dev@${{ secrets.SSH_HOST }}:/home/dev/app/containers/$container/
+            # Перезапуск контейнера
+            ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose build $container && docker compose up -d $container"
+          done
 
       - name: Check Docker Compose Status
         run: |
           ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose ps"
 
-      - name: View Userbot Logs
+      - name: View Logs for Changed Containers
         run: |
-          ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose logs tg_user_bot --tail 50"
-
-      - name: View Data Processor Logs
-        run: |
-          ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose logs data-processor --tail 50"
+          for container in $CHANGED_CONTAINERS; do
+            echo "Logs for container: $container"
+            ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose logs $container --tail 50"
+          done

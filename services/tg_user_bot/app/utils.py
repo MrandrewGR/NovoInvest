@@ -108,11 +108,28 @@ def ensure_dir(path: str):
         raise
 
 def serialize_message(message):
-    if isinstance(message, dict):
-        return {k: serialize_message(v) for k, v in message.items()}
-    elif isinstance(message, list):
-        return [serialize_message(item) for item in message]
-    elif isinstance(message, datetime.datetime):
-        return message.isoformat()
-    else:
-        return message
+    """
+    Recursively serialize a message object to a JSON-serializable format.
+
+    Args:
+        message: The message object or data to serialize.
+
+    Returns:
+        A JSON-serializable representation of the message.
+    """
+    try:
+        if isinstance(message, dict):
+            return {k: serialize_message(v) for k, v in message.items()}
+        elif isinstance(message, list):
+            return [serialize_message(item) for item in message]
+        elif isinstance(message, datetime.datetime):
+            return message.isoformat()
+        elif isinstance(message, bytes):
+            return message.decode('utf-8', errors='replace')  # Decode bytes to UTF-8 string
+        elif hasattr(message, 'to_dict'):
+            return serialize_message(message.to_dict())  # Convert Telethon or similar objects to dict
+        else:
+            return message
+    except Exception as e:
+        logger.error(f"Error during message serialization: {e}")
+        return str(message)  # Fallback to string representation if serialization fails

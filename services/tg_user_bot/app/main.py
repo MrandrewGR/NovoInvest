@@ -29,6 +29,7 @@ async def run_userbot():
 
     client = TelegramClient('session_name', settings.TELEGRAM_API_ID, settings.TELEGRAM_API_HASH)
 
+    # Изменено на хранение кортежей (topic, message)
     message_buffer = asyncio.Queue(maxsize=MAX_BUFFER_SIZE)
 
     kafka_producer = None
@@ -70,17 +71,18 @@ async def run_userbot():
                 if kafka_producer is None:
                     continue
             try:
-                message = await message_buffer.get()
+                # Получаем кортеж (topic, message)
+                topic, message = await message_buffer.get()
                 if message is None:
                     break  # Завершение задачи
-                logger.info(f"Отправка сообщения в Kafka: {message}")
-                await kafka_producer.send_message(settings.KAFKA_TOPIC, json.dumps(message))
+                logger.info(f"Отправка сообщения в Kafka топик '{topic}': {message}")
+                await kafka_producer.send_message(topic, json.dumps(message))
                 logger.info("Сообщение успешно отправлено в Kafka.")
                 message_buffer.task_done()
             except Exception as e:
                 logger.error(f"Ошибка при отправке сообщения в Kafka: {e}. Сообщение будет повторно добавлено в буфер.")
                 if not message_buffer.full():
-                    await message_buffer.put(message)
+                    await message_buffer.put((topic, message))
                 else:
                     logger.warning("Буфер сообщений переполнен. Сообщение потеряно.")
                 kafka_producer = None  # Сбросить producer для повторной инициализации
@@ -120,15 +122,31 @@ async def run_userbot():
                 if last_message_id is not None:
                     logger.debug(f"Последний обработанный message_id для чата {chat_id}: {last_message_id}")
                     async for message in client.iter_messages(chat_id, min_id=last_message_id, reverse=True):
-                        await message_buffer.put(message.to_dict())
-                        logger.info(f"Непрочитанное сообщение добавлено в буфер: {message.id} из чата {chat_id}")
+                        # Определяем, в какой топик отправлять сообщение
+                        if chat_id == settings.TELEGRAM_CHAT_ID:
+                            topic = settings.KAFKA_CHAT_TOPIC
+                        elif chat_id == settings.TELEGRAM_CHANNEL_ID:
+                            topic = settings.KAFKA_CHANNEL_TOPIC
+                        else:
+                            topic = settings.KAFKA_TOPIC  # Общий топик для других чатов
+
+                        await message_buffer.put((topic, message.to_dict()))
+                        logger.info(f"Непрочитанное сообщение добавлено в буфер: {message.id} из чата {chat_id} в топик '{topic}'")
                         counter.update_last_message_id(chat_id, message.id)
                 else:
                     logger.debug(
                         f"Нет сохраненного last_message_id для чата {chat_id}. Загрузка последних 100 сообщений.")
                     async for message in client.iter_messages(chat_id, reverse=True, limit=100):
-                        await message_buffer.put(message.to_dict())
-                        logger.info(f"Непрочитанное сообщение добавлено в буфер: {message.id} из чата {chat_id}")
+                        # Определяем, в какой топик отправлять сообщение
+                        if chat_id == settings.TELEGRAM_CHAT_ID:
+                            topic = settings.KAFKA_CHAT_TOPIC
+                        elif chat_id == settings.TELEGRAM_CHANNEL_ID:
+                            topic = settings.KAFKA_CHANNEL_TOPIC
+                        else:
+                            topic = settings.KAFKA_TOPIC  # Общий топик для других чатов
+
+                        await message_buffer.put((topic, message.to_dict()))
+                        logger.info(f"Непрочитанное сообщение добавлено в буфер: {message.id} из чата {chat_id} в топик '{topic}'")
                         counter.update_last_message_id(chat_id, message.id)
             except RPCError as e:
                 logger.error(f"Ошибка при получении сущности для чата {chat_id}: {e}")

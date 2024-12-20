@@ -47,7 +47,8 @@ async def process_message(event, message_buffer, topic, source, counter: Message
             "downloaded_media": downloaded_media_path
         }
 
-        await message_buffer.put(result_data)
+        # Добавляем кортеж (topic, message) в буфер
+        await message_buffer.put((topic, result_data))
         logger.info(f"Сообщение добавлено в буфер для Kafka топика '{topic}': {msg.id}")
 
         # Обновление последнего обработанного сообщения

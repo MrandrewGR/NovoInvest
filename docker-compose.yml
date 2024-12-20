@@ -42,7 +42,7 @@ services:
 
   data-processor:
     build:
-      context: ./services/app-data-processor
+      context: ./services/data-processor
     env_file:
       - ./env/.env
     environment:

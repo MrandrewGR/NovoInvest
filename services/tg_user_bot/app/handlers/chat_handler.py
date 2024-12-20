@@ -41,7 +41,7 @@ async def process_message(event, message_buffer, topic, source, counter: Message
         result_data = {
             "id": msg.id,
             "chat_id": event.chat_id,
-            "date": msg.date.isoformat(),
+            "date": msg.date.isoformat(),  # Преобразуем datetime в строку
             "original_message": message_data,
             "reply_message": reply_data,
             "downloaded_media": downloaded_media_path

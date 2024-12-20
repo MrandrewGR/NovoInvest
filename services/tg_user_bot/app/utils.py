@@ -2,11 +2,13 @@
 
 import asyncio
 import random
-import os
 import logging
 from zoneinfo import ZoneInfo
 from datetime import datetime, time
 from .config import settings
+import os
+import datetime
+
 
 logger = logging.getLogger("utils")
 
@@ -104,3 +106,13 @@ def ensure_dir(path: str):
     except Exception as e:
         logger.exception(f"Не удалось создать директорию '{directory}': {e}")
         raise
+
+def serialize_message(message):
+    if isinstance(message, dict):
+        return {k: serialize_message(v) for k, v in message.items()}
+    elif isinstance(message, list):
+        return [serialize_message(item) for item in message]
+    elif isinstance(message, datetime.datetime):
+        return message.isoformat()
+    else:
+        return message

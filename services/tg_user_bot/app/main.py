@@ -14,12 +14,11 @@ from .kafka_producer import KafkaMessageProducer
 from .kafka_consumer import KafkaMessageConsumer
 from .handlers.chat_handler import register_chat_handler
 from .handlers.channel_handler import register_channel_handler
-from .utils import ensure_dir
+from .utils import ensure_dir, serialize_message  # Импортируем serialize_message
 from .state import MessageCounter
 
 MAX_BUFFER_SIZE = 10000  # Максимальный размер буфера сообщений
 RECONNECT_INTERVAL = 10  # Интервал между попытками переподключения в секундах
-
 
 async def run_userbot():
     ensure_dir(settings.MEDIA_DIR)
@@ -76,7 +75,9 @@ async def run_userbot():
                 if message is None:
                     break  # Завершение задачи
                 logger.info(f"Отправка сообщения в Kafka топик '{topic}': {message}")
-                await kafka_producer.send_message(topic, json.dumps(message))
+                # Сериализуем сообщение
+                serialized_message = serialize_message(message)
+                await kafka_producer.send_message(topic, json.dumps(serialized_message))
                 logger.info("Сообщение успешно отправлено в Kafka.")
                 message_buffer.task_done()
             except Exception as e:
@@ -221,7 +222,6 @@ async def run_userbot():
             await kafka_consumer.close()
             logger.info("Kafka consumer закрыт.")
         logger.info("Сервис Userbot завершил работу корректно.")
-
 
 if __name__ == "__main__":
     try:

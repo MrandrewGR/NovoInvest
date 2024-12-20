@@ -1,6 +1,8 @@
 # File location: services/data_processor/wait-for-services.sh
 #!/bin/bash
 set -e
+# Добавьте эту строку перед запуском Alembic
+cd /app
 
 wait_for_service() {
   local host=$1

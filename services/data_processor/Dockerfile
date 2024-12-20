@@ -15,5 +15,6 @@ COPY wait-for-services.sh /app/wait-for-services.sh
 RUN chmod +x /app/wait-for-services.sh
 
 COPY app /app/
+ENV PYTHONPATH=/app
 
 CMD ["bash", "-c", "./wait-for-services.sh && alembic upgrade head && python consumer.py"]

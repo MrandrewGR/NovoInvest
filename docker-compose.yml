@@ -1,139 +1,80 @@
-name: Deploy to Hetzner
-
-on:
-  push:
-    branches: [ "main" ]
-
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-
-    steps:
-      # Шаг 1: Проверка кода из репозитория
-      - name: Checkout code
-        uses: actions/checkout@v2
-
-      # Шаг 2: Настройка Git для обнаружения изменений
-      - name: Set up Git for detecting changes
-        run: |
-          git fetch origin main
-
-      # Шаг 3: Определение изменённых микросервисов
-      - name: Determine changed services
-        id: changes
-        run: |
-          # Предполагается, что каждый микросервис находится в отдельной папке внутри /services
-          CHANGED_SERVICES=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep '^services/' | awk -F/ '{print $2}' | uniq)
-          echo "CHANGED_SERVICES=$CHANGED_SERVICES" >> $GITHUB_ENV
-
-      # Шаг 4: Отладка - вывод изменённых микросервисов
-      - name: Debug Changed Services
-        run: |
-          echo "Changed Services: $CHANGED_SERVICES"
-
-      # Шаг 5: Установка rsync и других зависимостей
-      - name: Install rsync and other dependencies
-        run: sudo apt-get update && sudo apt-get install -y rsync
-
-      # Шаг 6: Настройка SSH Agent с использованием секретного ключа
-      - name: Set up SSH Agent
-        uses: webfactory/ssh-agent@v0.5.3
-        with:
-          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
-
-      # Шаг 7: Добавление хоста в known_hosts для предотвращения проблем с SSH
-      - name: Add known hosts
-        run: ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
-
-      # Шаг 8: Тестирование SSH подключения
-      - name: Test SSH Connection
-        run: ssh dev@${{ secrets.SSH_HOST }} 'echo "SSH connection established"'
-
-      # Шаг 9: Декодирование и сохранение session файла (если требуется)
-      - name: Decode and Save Session File
-        if: ${{ secrets.SESSION_FILE_BASE64 != '' }}
-        run: |
-          echo "${{ secrets.SESSION_FILE_BASE64 }}" | base64 --decode > session_name.session
-          chmod 600 session_name.session
-
-      # Шаг 10: Копирование session файла на сервер (если требуется)
-      - name: Copy session to server
-        if: ${{ secrets.SESSION_FILE_BASE64 != '' }}
-        run: |
-          rsync -avz session_name.session dev@${{ secrets.SSH_HOST }}:/home/dev/app/session_name.session
-
-      # Шаг 11: Установка Docker и Docker Compose на сервере (если не установлены)
-      - name: Install Docker and Docker Compose on server
-        run: |
-          ssh dev@${{ secrets.SSH_HOST }} << 'EOF'
-            # Проверка установки Docker
-            if ! command -v docker &> /dev/null
-            then
-              sudo apt-get update
-              sudo apt-get install -y ca-certificates curl gnupg lsb-release
-              sudo mkdir -p /etc/apt/keyrings
-              curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-              echo \
-                "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
-                $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-              sudo apt-get update
-              sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-            fi
-
-            # Проверка установки Docker Compose
-            if ! command -v docker compose &> /dev/null
-            then
-              sudo mkdir -p /home/dev/.docker/cli-plugins/
-              sudo curl -SL https://github.com/docker/compose/releases/download/v2.20.2/docker-compose-linux-x86_64 -o /home/dev/.docker/cli-plugins/docker-compose
-              sudo chmod +x /home/dev/.docker/cli-plugins/docker-compose
-            fi
-            docker compose version
-          EOF
-
-      # Шаг 12: Добавление пользователя в группу Docker
-      - name: Add user to Docker group
-        run: ssh dev@${{ secrets.SSH_HOST }} "sudo usermod -aG docker dev"
-
-      # Шаг 13: Создание .env файла на сервере (если требуется)
-      - name: Create .env file on server
-        run: |
-          ssh dev@${{ secrets.SSH_HOST }} "mkdir -p /home/dev/app/env"
-          ssh dev@${{ secrets.SSH_HOST }} "cat <<EOF > /home/dev/app/env/.env
-          TELEGRAM_API_ID=${{ secrets.TELEGRAM_API_ID }}
-          TELEGRAM_API_HASH=${{ secrets.TELEGRAM_API_HASH }}
-          TELEGRAM_PHONE=${{ secrets.TELEGRAM_PHONE }}
-          TELEGRAM_CHANNEL_ID=${{ secrets.TELEGRAM_CHANNEL_ID }}
-          TELEGRAM_CHAT_ID=${{ secrets.TELEGRAM_CHAT_ID }}
-          TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
-          KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-          EOF"
-
-      # Шаг 14: Деплой изменённых микросервисов
-      - name: Deploy changed services
-        run: |
-          if [ -z "$CHANGED_SERVICES" ]; then
-            echo "No services changed. Exiting deployment."
-            exit 0
-          fi
-
-          # Копирование обновлённого docker-compose.yml на сервер
-          rsync -avz docker-compose.yml dev@${{ secrets.SSH_HOST }}:/home/dev/app/docker-compose.yml
-
-          for service in $CHANGED_SERVICES; do
-            echo "Deploying service: $service"
-            # Перезапуск микросервиса с пересборкой
-            ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose up -d --build --force-recreate $service" | tee deploy_${service}.log
-          done
-
-      # Шаг 15: Проверка статуса Docker Compose
-      - name: Check Docker Compose Status
-        run: |
-          ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose ps"
-
-      # Шаг 16: Просмотр логов для изменённых микросервисов
-      - name: View Logs for Changed Services
-        run: |
-          for service in $CHANGED_SERVICES; do
-            echo "Logs for service: $service"
-            ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose logs $service --tail 50"
-          done
+version: '3.8'
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.0
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+    ports:
+      - "2181:2181"
+    networks:
+      - app_app_network
+  kafka:
+    image: confluentinc/cp-kafka:7.4.0
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    networks:
+      - app_app_network
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: data_processor_db
+    ports:
+      - "5432:5432"
+    networks:
+      - app_app_network
+  data-processor:
+    build:
+      context: ./services/data_processor
+    env_file:
+      - ./env/.env
+    depends_on:
+      - kafka
+      - postgres
+    volumes:
+      - ./services/data_processor/logs:/app/logs
+    restart: unless-stopped
+    networks:
+      - app_app_network
+  tg_standard_bot:
+    build:
+      context: ./services/tg_standard_bot
+    env_file:
+      - ./env/.env
+    depends_on:
+      - kafka
+    volumes:
+      - ./services/tg_standard_bot/app/logs:/app/logs
+    restart: no
+    networks:
+      - app_app_network
+  tg_user_bot:
+    build:
+      context: ./services/tg_user_bot
+    env_file:
+      - ./env/.env
+    environment:
+      - LOG_DIR=/app/logs  # Добавьте эту строку
+    depends_on:
+      - kafka
+      - postgres
+    volumes:
+      - ./services/tg_user_bot/logs:/app/logs
+      - ./services/tg_user_bot/media:/app/media
+      - ./session_name.session:/app/session_name.session
+    restart: no
+    networks:
+      - app_app_network
+networks:
+  app_app_network:
+    name: app_app_network
+    driver: bridge

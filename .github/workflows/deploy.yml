@@ -9,13 +9,16 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # Шаг 1: Проверка кода из репозитория
       - name: Checkout code
         uses: actions/checkout@v2
 
+      # Шаг 2: Настройка Git для обнаружения изменений
       - name: Set up Git for detecting changes
         run: |
           git fetch origin main
 
+      # Шаг 3: Определение изменённых контейнеров
       - name: Determine changed containers
         id: changes
         run: |
@@ -23,36 +26,45 @@ jobs:
           CHANGED_CONTAINERS=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep '^containers/' | awk -F/ '{print $2}' | uniq)
           echo "CHANGED_CONTAINERS=$CHANGED_CONTAINERS" >> $GITHUB_ENV
 
+      # Шаг 4: Отладка - вывод изменённых контейнеров
       - name: Debug Changed Containers
         run: |
           echo "Changed Containers: $CHANGED_CONTAINERS"
 
+      # Шаг 5: Установка rsync и других зависимостей
       - name: Install rsync and other dependencies
         run: sudo apt-get update && sudo apt-get install -y rsync
 
+      # Шаг 6: Настройка SSH Agent с использованием секретного ключа
       - name: Set up SSH Agent
         uses: webfactory/ssh-agent@v0.5.3
         with:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
+      # Шаг 7: Добавление хоста в known_hosts для предотвращения проблем с SSH
       - name: Add known hosts
         run: ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
 
+      # Шаг 8: Тестирование SSH подключения
       - name: Test SSH Connection
         run: ssh dev@${{ secrets.SSH_HOST }} 'echo "SSH connection established"'
 
+      # Шаг 9: Декодирование и сохранение session файла
       - name: Decode and Save Session File
         run: |
           echo "${{ secrets.SESSION_FILE_BASE64 }}" | base64 --decode > session_name.session
           chmod 600 session_name.session
 
+      # Шаг 10: Копирование session файла на сервер
       - name: Copy session to server
         run: |
           rsync -avz session_name.session dev@${{ secrets.SSH_HOST }}:/home/dev/app/session_name.session
 
+      # Шаг 11: Установка Docker и Docker Compose на сервере (если не установлены)
       - name: Install Docker and Docker Compose on server
         run: |
           ssh dev@${{ secrets.SSH_HOST }} << 'EOF'
+            # Проверка установки Docker
             if ! command -v docker &> /dev/null
             then
               sudo apt-get update
@@ -66,6 +78,7 @@ jobs:
               sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
             fi
 
+            # Проверка установки Docker Compose
             if ! command -v docker compose &> /dev/null
             then
               sudo mkdir -p /home/dev/.docker/cli-plugins/
@@ -75,9 +88,11 @@ jobs:
             docker compose version
           EOF
 
+      # Шаг 12: Добавление пользователя в группу Docker
       - name: Add user to Docker group
         run: ssh dev@${{ secrets.SSH_HOST }} "sudo usermod -aG docker dev"
 
+      # Шаг 13: Создание .env файла на сервере
       - name: Create .env file on server
         run: |
           ssh dev@${{ secrets.SSH_HOST }} "mkdir -p /home/dev/app/env"
@@ -91,20 +106,23 @@ jobs:
           KAFKA_BOOTSTRAP_SERVERS=kafka:9092
           EOF"
 
+      # Шаг 14: Деплой изменённых контейнеров
       - name: Deploy changed containers
         run: |
           for container in $CHANGED_CONTAINERS; do
             echo "Deploying container: $container"
-            # Copy container code to server
+            # Копирование кода контейнера на сервер
             rsync -avz --exclude '.git' --exclude '.github' containers/$container/ dev@${{ secrets.SSH_HOST }}:/home/dev/app/containers/$container/
-            # Rebuild and recreate the container
-            ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose up -d --build --force-recreate $container"
+            # Перезапуск контейнера с пересборкой
+            ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose up -d --build --force-recreate $container" | tee deploy_${container}.log
           done
 
+      # Шаг 15: Проверка статуса Docker Compose
       - name: Check Docker Compose Status
         run: |
           ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose ps"
 
+      # Шаг 16: Просмотр логов для изменённых контейнеров
       - name: View Logs for Changed Containers
         run: |
           for container in $CHANGED_CONTAINERS; do

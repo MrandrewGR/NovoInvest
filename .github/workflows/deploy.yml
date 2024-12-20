@@ -9,30 +9,29 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Шаг 1: Проверка кода из репозитория
+      # Шаг 1: Клонирование репозитория
       - name: Checkout code
         uses: actions/checkout@v2
 
       # Шаг 2: Настройка Git для обнаружения изменений
-      - name: Set up Git for detecting changes
-        run: |
-          git fetch origin main
+      - name: Set up Git
+        run: git fetch origin main
 
-      # Шаг 3: Определение изменённых контейнеров
-      - name: Determine changed containers
+      # Шаг 3: Определение изменённых микросервисов
+      - name: Determine changed services
         id: changes
         run: |
-          # Предполагается, что каждый контейнер находится в отдельной папке внутри /containers
-          CHANGED_CONTAINERS=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep '^containers/' | awk -F/ '{print $2}' | uniq)
-          echo "CHANGED_CONTAINERS=$CHANGED_CONTAINERS" >> $GITHUB_ENV
+          # Предполагается, что каждый микросервис находится в отдельной папке внутри /services
+          CHANGED_SERVICES=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep '^services/' | awk -F/ '{print $2}' | uniq)
+          echo "CHANGED_SERVICES=$CHANGED_SERVICES" >> $GITHUB_ENV
 
-      # Шаг 4: Отладка - вывод изменённых контейнеров
-      - name: Debug Changed Containers
+      # Шаг 4: Отладка - вывод изменённых микросервисов
+      - name: Debug Changed Services
         run: |
-          echo "Changed Containers: $CHANGED_CONTAINERS"
+          echo "Изменённые сервисы: $CHANGED_SERVICES"
 
       # Шаг 5: Установка rsync и других зависимостей
-      - name: Install rsync and other dependencies
+      - name: Install rsync
         run: sudo apt-get update && sudo apt-get install -y rsync
 
       # Шаг 6: Настройка SSH Agent с использованием секретного ключа
@@ -41,7 +40,7 @@ jobs:
         with:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
-      # Шаг 7: Добавление хоста в known_hosts для предотвращения проблем с SSH
+      # Шаг 7: Добавление хоста в known_hosts
       - name: Add known hosts
         run: ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
 
@@ -49,18 +48,7 @@ jobs:
       - name: Test SSH Connection
         run: ssh dev@${{ secrets.SSH_HOST }} 'echo "SSH connection established"'
 
-      # Шаг 9: Декодирование и сохранение session файла
-      - name: Decode and Save Session File
-        run: |
-          echo "${{ secrets.SESSION_FILE_BASE64 }}" | base64 --decode > session_name.session
-          chmod 600 session_name.session
-
-      # Шаг 10: Копирование session файла на сервер
-      - name: Copy session to server
-        run: |
-          rsync -avz session_name.session dev@${{ secrets.SSH_HOST }}:/home/dev/app/session_name.session
-
-      # Шаг 11: Установка Docker и Docker Compose на сервере (если не установлены)
+      # Шаг 9: Установка Docker и Docker Compose на сервере (если не установлены)
       - name: Install Docker and Docker Compose on server
         run: |
           ssh dev@${{ secrets.SSH_HOST }} << 'EOF'
@@ -79,21 +67,21 @@ jobs:
             fi
 
             # Проверка установки Docker Compose
-            if ! command -v docker compose &> /dev/null
+            if ! command -v docker-compose &> /dev/null
             then
-              sudo mkdir -p /home/dev/.docker/cli-plugins/
-              sudo curl -SL https://github.com/docker/compose/releases/download/v2.20.2/docker-compose-linux-x86_64 -o /home/dev/.docker/cli-plugins/docker-compose
-              sudo chmod +x /home/dev/.docker/cli-plugins/docker-compose
+              sudo curl -L "https://github.com/docker/compose/releases/download/v2.20.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+              sudo chmod +x /usr/local/bin/docker-compose
             fi
-            docker compose version
+            docker --version
+            docker-compose --version
           EOF
 
-      # Шаг 12: Добавление пользователя в группу Docker
+      # Шаг 10: Добавление пользователя в группу Docker
       - name: Add user to Docker group
         run: ssh dev@${{ secrets.SSH_HOST }} "sudo usermod -aG docker dev"
 
-      # Шаг 13: Создание .env файла на сервере
-      - name: Create .env file on server
+      # Шаг 11: Создание или обновление .env файла на сервере (если требуется)
+      - name: Create or Update .env file on server
         run: |
           ssh dev@${{ secrets.SSH_HOST }} "mkdir -p /home/dev/app/env"
           ssh dev@${{ secrets.SSH_HOST }} "cat <<EOF > /home/dev/app/env/.env
@@ -106,26 +94,31 @@ jobs:
           KAFKA_BOOTSTRAP_SERVERS=kafka:9092
           EOF"
 
-      # Шаг 14: Деплой изменённых контейнеров
-      - name: Deploy changed containers
+      # Шаг 12: Деплой изменённых микросервисов
+      - name: Deploy changed services
         run: |
-          for container in $CHANGED_CONTAINERS; do
-            echo "Deploying container: $container"
-            # Копирование кода контейнера на сервер
-            rsync -avz --exclude '.git' --exclude '.github' containers/$container/ dev@${{ secrets.SSH_HOST }}:/home/dev/app/containers/$container/
-            # Перезапуск контейнера с пересборкой
-            ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose up -d --build --force-recreate $container" | tee deploy_${container}.log
+          if [ -z "$CHANGED_SERVICES" ]; then
+            echo "Нет изменений в сервисах. Пропуск деплоя."
+            exit 0
+          fi
+
+          for service in $CHANGED_SERVICES; do
+            echo "Деплой сервиса: $service"
+            # Копирование кода микросервиса на сервер
+            rsync -avz --exclude '.git' --exclude '.github' services/$service/ dev@${{ secrets.SSH_HOST }}:/home/dev/app/services/$service/
+            # Перезапуск микросервиса с пересборкой
+            ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker-compose up -d --build --force-recreate $service" | tee deploy_${service}.log
           done
 
-      # Шаг 15: Проверка статуса Docker Compose
+      # Шаг 13: Проверка статуса Docker Compose
       - name: Check Docker Compose Status
         run: |
-          ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose ps"
+          ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker-compose ps"
 
-      # Шаг 16: Просмотр логов для изменённых контейнеров
-      - name: View Logs for Changed Containers
+      # Шаг 14: Просмотр логов для изменённых микросервисов
+      - name: View Logs for Changed Services
         run: |
-          for container in $CHANGED_CONTAINERS; do
-            echo "Logs for container: $container"
-            ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose logs $container --tail 50"
+          for service in $CHANGED_SERVICES; do
+            echo "Логи сервиса: $service"
+            ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker-compose logs $service --tail 50"
           done

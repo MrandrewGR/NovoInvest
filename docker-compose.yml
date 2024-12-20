@@ -21,6 +21,11 @@ services:
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
       KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "9092"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     networks:
       - app_app_network
 
@@ -41,8 +46,10 @@ services:
     env_file:
       - ./env/.env
     depends_on:
-      - kafka
-      - postgres
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
     volumes:
       - ./services/app-data-processor/logs:/app/logs
     restart: unless-stopped
@@ -55,7 +62,8 @@ services:
     env_file:
       - ./env/.env
     depends_on:
-      - kafka
+      kafka:
+        condition: service_healthy
     volumes:
       - ./services/tg_standard_bot/app/logs:/app/logs
     restart: no
@@ -70,8 +78,10 @@ services:
     environment:
       - LOG_DIR=/app/logs
     depends_on:
-      - kafka
-      - postgres
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
     volumes:
       - ./services/tg_user_bot/logs:/app/logs
       - ./services/tg_user_bot/media:/app/media

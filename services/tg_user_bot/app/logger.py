@@ -41,16 +41,17 @@ def setup_logging():
             logger = logging.getLogger(logger_name)
             logger.setLevel(getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO))
             logger.addHandler(file_handler)
-            logger.propagate = False
+            logger.propagate = True  # Изменено с False на True
         except Exception as e:
             print(f"Ошибка при настройке логгера {logger_name}: {e}")
 
     # Основной логгер для пользовательского приложения (userbot)
     userbot_logger = logging.getLogger("userbot")
-    userbot_logger.addHandler(logging.StreamHandler())
-    userbot_logger.propagate = False
+    # Удаляем дополнительный StreamHandler, так как пропагация уже обеспечит вывод в корневой StreamHandler
+    # userbot_logger.addHandler(logging.StreamHandler())
+    userbot_logger.propagate = True  # Изменено с False на True
 
     # Тестовое сообщение
-    userbot_logger.info("Логирование настроено корректно.")
+    logging.getLogger("userbot").info("Логирование настроено корректно.")
 
-    return userbot_logger
+    return logging.getLogger("userbot")

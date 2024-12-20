@@ -17,6 +17,7 @@ def register_chat_handler(client, kafka_producer, counter: MessageCounter, userb
         if not userbot_active.is_set():
             logger.info("Userbot приостановлен. Сообщение игнорируется.")
             return
+        logger.info(f"В чате новое сообщение")
         await process_message(event, kafka_producer, settings.KAFKA_CHAT_TOPIC, "чата", counter)
 
 async def process_message(event, kafka_producer: KafkaMessageProducer, topic, source, counter: MessageCounter):

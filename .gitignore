@@ -120,9 +120,7 @@ celerybeat.pid
 *.sage.py
 
 # Environments
-.env
 .venv
-env/
 venv/
 ENV/
 env.bak/
@@ -170,8 +168,6 @@ extracted_links.csv
 /parsed_data
 /nsd/archive
 /tg/tgBot/inputs
-env
-env
 pdsf.py
 tests.ipynb
 session_name.session.b64

@@ -6,7 +6,7 @@ import os
 import signal
 import json
 from telethon import TelegramClient, events
-from telethon.errors import FloodWaitError
+from telethon.errors import FloodWaitError, RpcError
 from .config import settings
 from .logger import setup_logging
 from .kafka_producer import KafkaMessageProducer
@@ -116,13 +116,21 @@ async def run_userbot():
                 # Получение последнего обработанного сообщения из состояния
                 last_message_id = counter.get_last_message_id(chat_id)
 
-                # Если нет информации о последнем сообщении, обработать последние 100 сообщений
-                limit = None if last_message_id else 100
-
-                async for message in client.iter_messages(chat_id, min_id=last_message_id, reverse=True, limit=limit):
-                    await message_buffer.put(message.to_dict())
-                    logger.info(f"Непрочитанное сообщение добавлено в буфер: {message.id} из чата {chat_id}")
-                    counter.update_last_message_id(chat_id, message.id)
+                if last_message_id is not None:
+                    logger.debug(f"Последний обработанный message_id для чата {chat_id}: {last_message_id}")
+                    async for message in client.iter_messages(chat_id, min_id=last_message_id, reverse=True):
+                        await message_buffer.put(message.to_dict())
+                        logger.info(f"Непрочитанное сообщение добавлено в буфер: {message.id} из чата {chat_id}")
+                        counter.update_last_message_id(chat_id, message.id)
+                else:
+                    logger.debug(
+                        f"Нет сохраненного last_message_id для чата {chat_id}. Загрузка последних 100 сообщений.")
+                    async for message in client.iter_messages(chat_id, reverse=True, limit=100):
+                        await message_buffer.put(message.to_dict())
+                        logger.info(f"Непрочитанное сообщение добавлено в буфер: {message.id} из чата {chat_id}")
+                        counter.update_last_message_id(chat_id, message.id)
+            except RpcError as e:
+                logger.error(f"Ошибка при получении сущности для чата {chat_id}: {e}")
             except Exception as e:
                 logger.exception(f"Ошибка при загрузке непрочитанных сообщений из чата {chat_id}: {e}")
 
@@ -136,7 +144,11 @@ async def run_userbot():
 
     loop = asyncio.get_running_loop()
     for s in [signal.SIGINT, signal.SIGTERM]:
-        loop.add_signal_handler(s, shutdown_signal_handler, s, None)
+        try:
+            loop.add_signal_handler(s, shutdown_signal_handler, s, None)
+        except NotImplementedError:
+            # Windows не поддерживает добавление обработчиков сигналов из asyncio
+            pass
 
     async def handle_instruction(instruction):
         action = instruction.get("action")

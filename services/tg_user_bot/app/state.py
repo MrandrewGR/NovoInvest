@@ -37,10 +37,13 @@ class MessageCounter:
             logger.exception(f"Не удалось сохранить состояние: {e}")
 
     def get_last_message_id(self, chat_id):
-        return self.state.get(str(chat_id))
+        last_id = self.state.get(str(chat_id))
+        logger.debug(f"Получен last_message_id для чата {chat_id}: {last_id}")
+        return last_id
 
     def update_last_message_id(self, chat_id, message_id):
         self.state[str(chat_id)] = message_id
+        logger.debug(f"Обновлён last_message_id для чата {chat_id}: {message_id}")
         self.save_state()
 
     async def increment(self):

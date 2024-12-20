@@ -28,8 +28,8 @@ async def run_userbot():
 
     message_buffer = asyncio.Queue(maxsize=MAX_BUFFER_SIZE)
 
-    kafka_producer = None
-    kafka_consumer = None
+    kafka_producer = KafkaMessageProducer()
+    kafka_consumer = KafkaMessageConsumer()
 
     shutdown_event = asyncio.Event()
 
@@ -37,7 +37,7 @@ async def run_userbot():
         nonlocal kafka_producer
         while not shutdown_event.is_set():
             try:
-                kafka_producer = KafkaMessageProducer()
+                await kafka_producer.initialize()
                 logger.info("Kafka producer успешно инициализирован.")
                 break
             except Exception as e:
@@ -48,7 +48,7 @@ async def run_userbot():
         nonlocal kafka_consumer
         while not shutdown_event.is_set():
             try:
-                kafka_consumer = KafkaMessageConsumer()
+                await kafka_consumer.initialize()
                 logger.info("Kafka consumer успешно инициализирован.")
                 break
             except Exception as e:
@@ -56,7 +56,6 @@ async def run_userbot():
                 await asyncio.sleep(RECONNECT_INTERVAL)
 
     async def producer_task():
-        nonlocal kafka_producer
         while not shutdown_event.is_set():
             if kafka_producer is None:
                 await initialize_kafka_producer()
@@ -67,8 +66,7 @@ async def run_userbot():
                 if message is None:
                     break  # Завершение задачи
                 logger.info(f"Отправка сообщения в Kafka: {message}")
-                kafka_producer.send_message(settings.KAFKA_TOPIC, message)
-                logger.info("Сообщение успешно отправлено в Kafka.")
+                await kafka_producer.send_message(settings.KAFKA_TOPIC, message)
                 message_buffer.task_done()
             except Exception as e:
                 logger.error(f"Ошибка при отправке сообщения в Kafka: {e}. Сообщение будет повторно добавлено в буфер.")
@@ -80,7 +78,6 @@ async def run_userbot():
                 await asyncio.sleep(RECONNECT_INTERVAL)
 
     async def consumer_task():
-        nonlocal kafka_consumer
         while not shutdown_event.is_set():
             if kafka_consumer is None:
                 await initialize_kafka_consumer()
@@ -153,12 +150,8 @@ async def run_userbot():
         logger.exception(f"Ошибка при запуске userbot: {e}")
     finally:
         await client.disconnect()
-        if kafka_producer:
-            kafka_producer.close()
-            logger.info("Kafka producer закрыт.")
-        if kafka_consumer:
-            kafka_consumer.close()
-            logger.info("Kafka consumer закрыт.")
+        await kafka_producer.close()
+        await kafka_consumer.close()
         logger.info("Сервис Userbot завершил работу корректно.")
 
 if __name__ == "__main__":

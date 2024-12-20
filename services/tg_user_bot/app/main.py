@@ -16,7 +16,8 @@ from .utils import ensure_dir
 from .state import MessageCounter
 
 MAX_BUFFER_SIZE = 10000  # Максимальный размер буфера сообщений
-RECONNECT_INTERVAL = 5  # Интервал между попытками переподключения в секундах
+RECONNECT_INTERVAL = 10  # Интервал между попытками переподключения в секундах
+
 
 async def run_userbot():
     ensure_dir(settings.MEDIA_DIR)
@@ -41,7 +42,8 @@ async def run_userbot():
                 logger.info("Kafka producer успешно инициализирован.")
                 break
             except Exception as e:
-                logger.error(f"Не удалось инициализировать Kafka producer: {e}. Повторная попытка через {RECONNECT_INTERVAL} секунд.")
+                logger.error(
+                    f"Не удалось инициализировать Kafka producer: {e}. Повторная попытка через {RECONNECT_INTERVAL} секунд.")
                 await asyncio.sleep(RECONNECT_INTERVAL)
 
     async def initialize_kafka_consumer():
@@ -52,7 +54,8 @@ async def run_userbot():
                 logger.info("Kafka consumer успешно инициализирован.")
                 break
             except Exception as e:
-                logger.error(f"Не удалось инициализировать Kafka consumer: {e}. Повторная попытка через {RECONNECT_INTERVAL} секунд.")
+                logger.error(
+                    f"Не удалось инициализировать Kafka consumer: {e}. Повторная попытка через {RECONNECT_INTERVAL} секунд.")
                 await asyncio.sleep(RECONNECT_INTERVAL)
 
     async def producer_task():
@@ -94,7 +97,8 @@ async def run_userbot():
                     except Exception as e:
                         logger.exception(f"Ошибка при обработке инструкции: {e}")
             except Exception as e:
-                logger.error(f"Ошибка в Kafka consumer: {e}. Попытка переподключиться через {RECONNECT_INTERVAL} секунд.")
+                logger.error(
+                    f"Ошибка в Kafka consumer: {e}. Попытка переподключиться через {RECONNECT_INTERVAL} секунд.")
                 kafka_consumer = None
                 await asyncio.sleep(RECONNECT_INTERVAL)
 
@@ -153,6 +157,7 @@ async def run_userbot():
         await kafka_producer.close()
         await kafka_consumer.close()
         logger.info("Сервис Userbot завершил работу корректно.")
+
 
 if __name__ == "__main__":
     try:

@@ -6,7 +6,8 @@ import os
 import signal
 import json
 from telethon import TelegramClient, events
-from telethon.errors import FloodWaitError, RpcError
+from telethon.errors.rpcbaseerrors import RPCError
+from telethon.errors import FloodWaitError
 from .config import settings
 from .logger import setup_logging
 from .kafka_producer import KafkaMessageProducer
@@ -129,7 +130,7 @@ async def run_userbot():
                         await message_buffer.put(message.to_dict())
                         logger.info(f"Непрочитанное сообщение добавлено в буфер: {message.id} из чата {chat_id}")
                         counter.update_last_message_id(chat_id, message.id)
-            except RpcError as e:
+            except RPCError as e:
                 logger.error(f"Ошибка при получении сущности для чата {chat_id}: {e}")
             except Exception as e:
                 logger.exception(f"Ошибка при загрузке непрочитанных сообщений из чата {chat_id}: {e}")

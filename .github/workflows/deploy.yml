@@ -114,7 +114,6 @@ jobs:
         run: |
           if [ "${{ env.FULL_DEPLOY }}" == "true" ]; then
             echo "Deploying all services due to changes in deploy.yml"
-            # Перечисляем только директории под services/
             SERVICES=$(ls -d services/*/ | xargs -n 1 basename)
           elif [ "${{ env.DOCKER_COMPOSE_CHANGED }}" == "true" ]; then
             echo "docker-compose.yml changed. Deploying all services."
@@ -127,17 +126,21 @@ jobs:
             exit 0
           fi
 
-          for service in $SERVICES; do
-            echo "Deploying service: $service"
-            # Преобразуем имя папки в имя сервиса в docker-compose.yml
-            SERVICE_NAME=$(echo "$service" | sed 's/data_processor/data-processor/')
-            
-            # Копирование кода микросервиса на сервер
-            rsync -avz --exclude '.git' --exclude '.github' services/$service/ dev@${{ secrets.SSH_HOST }}:/home/dev/app/services/$service/
-            
-            # Перезапуск микросервиса с пересборкой
-            ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose up -d --build --force-recreate $SERVICE_NAME" | tee deploy_${service}.log
-          done
+          if [ "${{ env.FULL_DEPLOY }}" == "true" ] || [ "${{ env.DOCKER_COMPOSE_CHANGED }}" == "true" ]; then
+            # Разворачиваем все сервисы одновременно
+            echo "Deploying all services..."
+            ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose up -d --build --force-recreate"
+          else
+            # Разворачиваем только изменённые сервисы
+            for service in $SERVICES; do
+              echo "Deploying service: $service"
+              # Копирование кода микросервиса на сервер
+              rsync -avz --exclude '.git' --exclude '.github' services/$service/ dev@${{ secrets.SSH_HOST }}:/home/dev/app/services/$service/
+              
+              # Перезапуск микросервиса с пересборкой
+              ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose up -d --build --force-recreate $service" | tee deploy_${service}.log
+            done
+          fi
 
       # Шаг 13: Проверка статуса Docker Compose
       - name: Check Docker Compose Status

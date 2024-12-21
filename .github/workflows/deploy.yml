@@ -9,25 +9,25 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Шаг 1: Клонирование репозитория с полной историей
+      # Step 1: Checkout the repository with full history
       - name: Checkout code
         uses: actions/checkout@v2
         with:
-          fetch-depth: 0  # Загружает всю историю коммитов
+          fetch-depth: 0  # Fetches the entire commit history
 
-      # Шаг 2: Настройка Git для обнаружения изменений
+      # Step 2: Set up Git for change detection
       - name: Set up Git
         run: git fetch origin main
 
-      # Шаг 3: Определение изменённых микросервисов и важных файлов
+      # Step 3: Determine changed services and important files
       - name: Determine changed services and important files
         id: changes
         run: |
-          # Определяем изменения только в папке services/
-          CHANGED_SERVICES=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} -- services/ | grep '^services/' | awk -F/ '{print $2}' | uniq)
+          # Identify changed services by listing directories only
+          CHANGED_SERVICES=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} -- services/ | grep '^services/' | awk -F/ '{print $2}' | uniq | grep -v '__init__.py')
           echo "CHANGED_SERVICES=$CHANGED_SERVICES" >> $GITHUB_ENV
 
-          # Проверяем, изменены ли docker-compose.yml или deploy.yml
+          # Check if docker-compose.yml or deploy.yml has changed
           CHANGED_DOCKER_COMPOSE=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} -- docker-compose.yml | wc -l)
           CHANGED_DEPLOY_YML=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} -- .github/workflows/deploy.yml | wc -l)
 
@@ -37,7 +37,7 @@ jobs:
             echo "DOCKER_COMPOSE_CHANGED=true" >> $GITHUB_ENV
           fi
 
-      # Шаг 4: Отладка - вывод изменённых микросервисов и списка изменённых файлов
+      # Step 4: Debugging - Output changed services and files
       - name: Debug Git Diff
         run: |
           echo "CHANGED_SERVICES: $CHANGED_SERVICES"
@@ -45,29 +45,29 @@ jobs:
           echo "FULL_DEPLOY: $FULL_DEPLOY"
           git diff --name-only ${{ github.event.before }} ${{ github.sha }} -- services/ docker-compose.yml .github/workflows/deploy.yml
 
-      # Шаг 5: Установка rsync и других зависимостей
+      # Step 5: Install rsync and other dependencies
       - name: Install rsync
         run: sudo apt-get update && sudo apt-get install -y rsync
 
-      # Шаг 6: Настройка SSH Agent с использованием секретного ключа
+      # Step 6: Set up SSH Agent with the private key
       - name: Set up SSH Agent
         uses: webfactory/ssh-agent@v0.5.3
         with:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
-      # Шаг 7: Добавление хоста в known_hosts
+      # Step 7: Add the server to known_hosts
       - name: Add known hosts
         run: ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
 
-      # Шаг 8: Тестирование SSH подключения
+      # Step 8: Test SSH connection
       - name: Test SSH Connection
         run: ssh dev@${{ secrets.SSH_HOST }} 'echo "SSH connection established"'
 
-      # Шаг 9: Установка Docker и Docker Compose на сервере (если не установлены)
+      # Step 9: Install Docker and Docker Compose on the server if not present
       - name: Install Docker and Docker Compose on server
         run: |
           ssh dev@${{ secrets.SSH_HOST }} << 'EOF'
-            # Проверка установки Docker
+            # Check if Docker is installed
             if ! command -v docker &> /dev/null
             then
               sudo apt-get update
@@ -81,7 +81,7 @@ jobs:
               sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
             fi
 
-            # Проверка установки Docker Compose
+            # Check if Docker Compose is installed
             if ! command -v docker compose &> /dev/null
             then
               sudo mkdir -p /home/dev/.docker/cli-plugins/
@@ -91,11 +91,11 @@ jobs:
             docker compose version
           EOF
 
-      # Шаг 10: Добавление пользователя в группу Docker
+      # Step 10: Add the user to the Docker group
       - name: Add user to Docker group
         run: ssh dev@${{ secrets.SSH_HOST }} "sudo usermod -aG docker dev"
 
-      # Шаг 11: Создание или обновление .env файла на сервере (если требуется)
+      # Step 11: Create or update the .env file on the server if required
       - name: Create or Update .env file on server
         run: |
           ssh dev@${{ secrets.SSH_HOST }} "mkdir -p /home/dev/app/env"
@@ -109,15 +109,16 @@ jobs:
           KAFKA_BOOTSTRAP_SERVERS=kafka:9092
           EOF"
 
-      # Шаг 12: Деплой изменённых микросервисов или полный деплой
+      # Step 12: Deploy changed services or perform a full deploy
       - name: Deploy services
         run: |
           if [ "${{ env.FULL_DEPLOY }}" == "true" ]; then
             echo "Deploying all services due to changes in deploy.yml"
-            SERVICES=$(ls services)
+            # List only directories under services/
+            SERVICES=$(ls -d services/*/ | xargs -n 1 basename)
           elif [ "${{ env.DOCKER_COMPOSE_CHANGED }}" == "true" ]; then
             echo "docker-compose.yml changed. Deploying all services."
-            SERVICES=$(ls services)
+            SERVICES=$(ls -d services/*/ | xargs -n 1 basename)
           elif [ -n "${{ env.CHANGED_SERVICES }}" ]; then
             echo "Deploying changed services: $CHANGED_SERVICES"
             SERVICES=$CHANGED_SERVICES
@@ -128,26 +129,26 @@ jobs:
 
           for service in $SERVICES; do
             echo "Deploying service: $service"
-            # Преобразуем имя папки в имя сервиса в docker-compose.yml
+            # Transform folder name to service name in docker-compose.yml
             SERVICE_NAME=$(echo "$service" | sed 's/data_processor/data-processor/')
             
-            # Копирование кода микросервиса на сервер
+            # Copy microservice code to the server
             rsync -avz --exclude '.git' --exclude '.github' services/$service/ dev@${{ secrets.SSH_HOST }}:/home/dev/app/services/$service/
             
-            # Перезапуск микросервиса с пересборкой
+            # Restart the microservice with rebuild
             ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose up -d --build --force-recreate $SERVICE_NAME" | tee deploy_${service}.log
           done
 
-      # Шаг 13: Проверка статуса Docker Compose
+      # Step 13: Check Docker Compose status
       - name: Check Docker Compose Status
         run: |
           ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose ps"
 
-      # Шаг 14: Просмотр логов для изменённых микросервисов
+      # Step 14: View logs for deployed services
       - name: View Logs for Deployed Services
         run: |
           if [ "${{ env.FULL_DEPLOY }}" == "true" ] || [ "${{ env.DOCKER_COMPOSE_CHANGED }}" == "true" ]; then
-            SERVICES=$(ls services)
+            SERVICES=$(ls -d services/*/ | xargs -n 1 basename)
           else
             SERVICES=$CHANGED_SERVICES
           fi

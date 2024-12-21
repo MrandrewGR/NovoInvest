@@ -2,7 +2,7 @@ name: Deploy to Hetzner
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
 
 jobs:
   deploy:
@@ -19,19 +19,31 @@ jobs:
       - name: Set up Git
         run: git fetch origin main
 
-      # Шаг 3: Определение изменённых микросервисов
-      - name: Determine changed services
+      # Шаг 3: Определение изменённых микросервисов и важных файлов
+      - name: Determine changed services and important files
         id: changes
         run: |
           # Определяем изменения только в папке services/
           CHANGED_SERVICES=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} -- services/ | grep '^services/' | awk -F/ '{print $2}' | uniq)
           echo "CHANGED_SERVICES=$CHANGED_SERVICES" >> $GITHUB_ENV
 
+          # Проверяем, изменены ли docker-compose.yml или deploy.yml
+          CHANGED_DOCKER_COMPOSE=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} -- docker-compose.yml | wc -l)
+          CHANGED_DEPLOY_YML=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} -- .github/workflows/deploy.yml | wc -l)
+
+          if [ "$CHANGED_DEPLOY_YML" -gt 0 ]; then
+            echo "FULL_DEPLOY=true" >> $GITHUB_ENV
+          elif [ "$CHANGED_DOCKER_COMPOSE" -gt 0 ]; then
+            echo "DOCKER_COMPOSE_CHANGED=true" >> $GITHUB_ENV
+          fi
+
       # Шаг 4: Отладка - вывод изменённых микросервисов и списка изменённых файлов
       - name: Debug Git Diff
         run: |
           echo "CHANGED_SERVICES: $CHANGED_SERVICES"
-          git diff --name-only ${{ github.event.before }} ${{ github.sha }} -- services/
+          echo "DOCKER_COMPOSE_CHANGED: $DOCKER_COMPOSE_CHANGED"
+          echo "FULL_DEPLOY: $FULL_DEPLOY"
+          git diff --name-only ${{ github.event.before }} ${{ github.sha }} -- services/ docker-compose.yml .github/workflows/deploy.yml
 
       # Шаг 5: Установка rsync и других зависимостей
       - name: Install rsync
@@ -97,15 +109,24 @@ jobs:
           KAFKA_BOOTSTRAP_SERVERS=kafka:9092
           EOF"
 
-      # Шаг 14: Деплой изменённых микросервисов
-      - name: Deploy changed services
+      # Шаг 12: Деплой изменённых микросервисов или полный деплой
+      - name: Deploy services
         run: |
-          if [ -z "$CHANGED_SERVICES" ]; then
-            echo "No services changed. Exiting deployment."
+          if [ "${{ env.FULL_DEPLOY }}" == "true" ]; then
+            echo "Deploying all services due to changes in deploy.yml"
+            SERVICES=$(ls services)
+          elif [ "${{ env.DOCKER_COMPOSE_CHANGED }}" == "true" ]; then
+            echo "docker-compose.yml changed. Deploying all services."
+            SERVICES=$(ls services)
+          elif [ -n "${{ env.CHANGED_SERVICES }}" ]; then
+            echo "Deploying changed services: $CHANGED_SERVICES"
+            SERVICES=$CHANGED_SERVICES
+          else
+            echo "No relevant changes detected. Exiting deployment."
             exit 0
           fi
-      
-          for service in $CHANGED_SERVICES; do
+
+          for service in $SERVICES; do
             echo "Deploying service: $service"
             # Преобразуем имя папки в имя сервиса в docker-compose.yml
             SERVICE_NAME=$(echo "$service" | sed 's/data_processor/data-processor/')
@@ -117,16 +138,21 @@ jobs:
             ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose up -d --build --force-recreate $SERVICE_NAME" | tee deploy_${service}.log
           done
 
-
       # Шаг 13: Проверка статуса Docker Compose
       - name: Check Docker Compose Status
         run: |
           ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose ps"
 
       # Шаг 14: Просмотр логов для изменённых микросервисов
-      - name: View Logs for Changed Services
+      - name: View Logs for Deployed Services
         run: |
-          for service in $CHANGED_SERVICES; do
+          if [ "${{ env.FULL_DEPLOY }}" == "true" ] || [ "${{ env.DOCKER_COMPOSE_CHANGED }}" == "true" ]; then
+            SERVICES=$(ls services)
+          else
+            SERVICES=$CHANGED_SERVICES
+          fi
+
+          for service in $SERVICES; do
             echo "Логи сервиса: $service"
             ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose logs $service --tail 50"
           done

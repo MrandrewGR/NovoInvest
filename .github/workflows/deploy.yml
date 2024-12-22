@@ -100,14 +100,14 @@ jobs:
         run: |
           ssh dev@${{ secrets.SSH_HOST }} "mkdir -p /home/dev/app/env"
           ssh dev@${{ secrets.SSH_HOST }} "cat <<EOF > /home/dev/app/env/.env
-TELEGRAM_API_ID=${{ secrets.TELEGRAM_API_ID }}
-TELEGRAM_API_HASH=${{ secrets.TELEGRAM_API_HASH }}
-TELEGRAM_PHONE=${{ secrets.TELEGRAM_PHONE }}
-TELEGRAM_CHANNEL_ID=${{ secrets.TELEGRAM_CHANNEL_ID }}
-TELEGRAM_CHAT_ID=${{ secrets.TELEGRAM_CHAT_ID }}
-TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
-KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-EOF"
+          TELEGRAM_API_ID=${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH=${{ secrets.TELEGRAM_API_HASH }}
+          TELEGRAM_PHONE=${{ secrets.TELEGRAM_PHONE }}
+          TELEGRAM_CHANNEL_ID=${{ secrets.TELEGRAM_CHANNEL_ID }}
+          TELEGRAM_CHAT_ID=${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
+          KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+          EOF"
 
       # Шаг 12: Деплой изменённых микросервисов или полный деплой
       - name: Deploy services
@@ -125,21 +125,21 @@ EOF"
             echo "No relevant changes detected. Exiting deployment."
             exit 0
           fi
-
+      
           if [ "${{ env.FULL_DEPLOY }}" == "true" ] || [ "${{ env.DOCKER_COMPOSE_CHANGED }}" == "true" ]; then
-            # Разворачиваем все сервисы одновременно с удалением orphan контейнеров
-            echo "Deploying all services..."
+            # Копируем весь проект на сервер
             rsync -avz --exclude '.git' --exclude '.github' . dev@${{ secrets.SSH_HOST }}:/home/dev/app/
-            ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose up -d --build --force-recreate --remove-orphans"
+            # Запускаем все сервисы
+            ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose up -d --build --force-recreate"
           else
-            # Разворачиваем только изменённые сервисы
+            # Копируем только изменённые сервисы
             for service in $SERVICES; do
               echo "Deploying service: $service"
-              # Копирование кода микросервиса на сервер
+              # Копируем целиком папку этого микросервиса
               rsync -avz --exclude '.git' --exclude '.github' services/$service/ dev@${{ secrets.SSH_HOST }}:/home/dev/app/services/$service/
             done
-            # После копирования всех изменённых сервисов — поднимаем их с удалением orphan контейнеров
-            ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose up -d --build --force-recreate --remove-orphans $SERVICES"
+            # После копирования всех изменённых сервисов — поднимаем их
+            ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose up -d --build --force-recreate $SERVICES"
           fi
 
       # Шаг 13: Проверка статуса Docker Compose

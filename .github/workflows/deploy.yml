@@ -100,16 +100,16 @@ jobs:
         run: |
           ssh dev@${{ secrets.SSH_HOST }} "mkdir -p /home/dev/app/env"
           ssh dev@${{ secrets.SSH_HOST }} "cat <<EOF > /home/dev/app/env/.env
-          TELEGRAM_API_ID=${{ secrets.TELEGRAM_API_ID }}
-          TELEGRAM_API_HASH=${{ secrets.TELEGRAM_API_HASH }}
-          TELEGRAM_PHONE=${{ secrets.TELEGRAM_PHONE }}
-          TELEGRAM_CHANNEL_ID=${{ secrets.TELEGRAM_CHANNEL_ID }}
-          TELEGRAM_CHAT_ID=${{ secrets.TELEGRAM_CHAT_ID }}
-          TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
-          KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-          EOF"
+TELEGRAM_API_ID=${{ secrets.TELEGRAM_API_ID }}
+TELEGRAM_API_HASH=${{ secrets.TELEGRAM_API_HASH }}
+TELEGRAM_PHONE=${{ secrets.TELEGRAM_PHONE }}
+TELEGRAM_CHANNEL_ID=${{ secrets.TELEGRAM_CHANNEL_ID }}
+TELEGRAM_CHAT_ID=${{ secrets.TELEGRAM_CHAT_ID }}
+TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
+KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+EOF"
 
-      # Шаг 12: Деплой изменённых микросервисов или полный деплой с проверкой статуса контейнеров
+      # Шаг 12: Деплой изменённых микросервисов или полный деплой
       - name: Deploy services
         run: |
           if [ "${{ env.FULL_DEPLOY }}" == "true" ]; then
@@ -131,35 +131,6 @@ jobs:
             echo "Deploying all services..."
             rsync -avz --exclude '.git' --exclude '.github' . dev@${{ secrets.SSH_HOST }}:/home/dev/app/
             ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose up -d --build --force-recreate --remove-orphans"
-
-            # Проверка статуса контейнеров и перезапуск unhealthy контейнеров
-            ssh dev@${{ secrets.SSH_HOST }} << 'EOF'
-            MAX_ATTEMPTS=3
-            SLEEP_TIME=10
-
-          for service in $(docker compose ps --format json | jq -r '.[].Name'); do
-            for ((i=1;i<=MAX_ATTEMPTS;i++)); do
-              STATUS=$(docker inspect --format='{{.State.Health.Status}}' $service 2>/dev/null || echo "unknown")
-              if [ "$STATUS" == "healthy" ]; then
-                echo "Service $service is healthy."
-                break
-              elif [ "$STATUS" == "unhealthy" ]; then
-                echo "Service $service is unhealthy. Attempting to restart (Attempt $i)..."
-                docker compose restart $service
-                sleep $SLEEP_TIME
-              else
-                echo "Service $service has unknown status ($STATUS). Skipping..."
-                break
-              fi
-          
-              if [ $i -eq $MAX_ATTEMPTS ]; then
-                echo "Service $service remains unhealthy after $MAX_ATTEMPTS attempts."
-                # Опционально: Выход с ошибкой для остановки дальнейших шагов
-                exit 1
-              fi
-            done
-          done
-          EOF
           else
             # Разворачиваем только изменённые сервисы
             for service in $SERVICES; do
@@ -169,37 +140,7 @@ jobs:
             done
             # После копирования всех изменённых сервисов — поднимаем их с удалением orphan контейнеров
             ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose up -d --build --force-recreate --remove-orphans $SERVICES"
-
-            # Проверка статуса контейнеров и перезапуск unhealthy контейнеров для изменённых сервисов
-            ssh dev@${{ secrets.SSH_HOST }} << 'EOF'
-            MAX_ATTEMPTS=3
-            SLEEP_TIME=10
-            SERVICES="$SERVICES"
-            
-            for service in $SERVICES; do
-              for ((i=1;i<=MAX_ATTEMPTS;i++)); do
-                STATUS=$(docker inspect --format='{{.State.Health.Status}}' $service 2>/dev/null || echo "unknown")
-                if [ "$STATUS" == "healthy" ]; then
-                  echo "Service $service is healthy."
-                  break
-                elif [ "$STATUS" == "unhealthy" ]; then
-                  echo "Service $service is unhealthy. Attempting to restart (Attempt $i)..."
-                  docker compose restart $service
-                  sleep $SLEEP_TIME
-                else
-                  echo "Service $service has unknown status ($STATUS). Skipping..."
-                  break
-                fi
-            
-                if [ $i -eq $MAX_ATTEMPTS ]; then
-                  echo "Service $service remains unhealthy after $MAX_ATTEMPTS attempts."
-                  # Опционально: Выход с ошибкой для остановки дальнейших шагов
-                  exit 1
-                fi
-              done
-            done
-            EOF
-                      fi
+          fi
 
       # Шаг 13: Проверка статуса Docker Compose
       - name: Check Docker Compose Status

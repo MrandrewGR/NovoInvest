@@ -25,7 +25,7 @@ services:
       KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
     volumes:
-        - kafka_data:/var/lib/kafka/data
+      - kafka_data:/var/lib/kafka/data
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "nc", "-z", "localhost", "9092"]
@@ -65,7 +65,6 @@ services:
     restart: unless-stopped
     networks:
       - app_app_network
-
 
   tg_standard_bot:
     container_name: tg_bot
@@ -107,3 +106,7 @@ networks:
   app_app_network:
     name: app_app_network
     driver: bridge
+
+volumes:
+  kafka_data:
+    driver: local

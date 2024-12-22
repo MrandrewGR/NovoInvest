@@ -1,7 +1,6 @@
 version: '3.8'
 services:
   zookeeper:
-    container_name: zookeeper
     image: confluentinc/cp-zookeeper:7.4.0
     restart: unless-stopped
     environment:
@@ -12,7 +11,6 @@ services:
       - app_app_network
 
   kafka:
-    container_name: kafka
     image: confluentinc/cp-kafka:7.4.0
     depends_on:
       - zookeeper
@@ -36,7 +34,6 @@ services:
       - app_app_network
 
   postgres:
-    container_name: postgres
     image: postgres:15
     environment:
       POSTGRES_USER: postgres
@@ -48,7 +45,6 @@ services:
       - app_app_network
 
   data_processor:
-    container_name: data
     build:
       context: ./services/data_processor
     env_file:
@@ -67,7 +63,6 @@ services:
       - app_app_network
 
   tg_standard_bot:
-    container_name: tg_bot
     build:
       context: ./services/tg_standard_bot
     env_file:
@@ -82,7 +77,6 @@ services:
       - app_app_network
 
   tg_user_bot:
-    container_name: tg_user
     build:
       context: ./services/tg_user_bot
     env_file:

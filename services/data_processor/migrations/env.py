@@ -5,22 +5,19 @@ from sqlalchemy import engine_from_config
 from sqlalchemy import pool
 from alembic import context
 
-# Добавьте путь к PYTHONPATH
+# Добавьте путь к PYTHONPATH при необходимости
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from app.database import Base  # Импортируйте вашу базу данных
+# Импорт вашей базы и моделей
+from app.database import Base
 
-# this is the Alembic Config object, which provides
-# access to the values within the .ini file in use.
+# Это объект метаданных, который нужен Alembic для автоматической генерации миграций
+target_metadata = Base.metadata
+
+# Этот объект позволяет читать настройки из alembic.ini
 config = context.config
-
-# Interpret the config file for Python logging.
-# This line sets up loggers basically.
 fileConfig(config.config_file_name)
 
-# add your model's MetaData object here
-# for 'autogenerate' support
-target_metadata = Base.metadata
 
 def run_migrations_offline():
     """Run migrations in 'offline' mode."""
@@ -31,7 +28,6 @@ def run_migrations_offline():
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
     )
-
     with context.begin_transaction():
         context.run_migrations()
 
@@ -43,10 +39,8 @@ def run_migrations_online():
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )
-
     with connectable.connect() as connection:
         context.configure(connection=connection, target_metadata=target_metadata)
-
         with context.begin_transaction():
             context.run_migrations()
 

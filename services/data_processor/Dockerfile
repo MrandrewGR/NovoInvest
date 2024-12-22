@@ -1,20 +1,27 @@
+# File location: services/data_processor/Dockerfile
+
 FROM python:3.10-slim
 
-# Установка зависимостей
+# Установка зависимостей системы
 RUN apt-get update && apt-get install -y gcc libpq-dev netcat-openbsd
 
 # Установка рабочей директории
 WORKDIR /app
 
-# Установка зависимостей Python
+# Скопируем файл зависимостей
 COPY requirements.txt .
+
+# Устанавливаем зависимости Python
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Копирование всех файлов микросервиса
+# Копируем всё содержимое микросервиса
 COPY . /app
+
+# Делаем скрипт ожидания сервисов исполняемым
+RUN chmod +x /app/wait-for-services.sh
 
 # Установка переменной окружения PYTHONPATH
 ENV PYTHONPATH=/app/app
 
-# Запуск скрипта ожидания и выполнения миграций
+# Запуск: ждем зависимости, выполняем миграции и запускаем consumer
 CMD ["bash", "-c", "./wait-for-services.sh && alembic upgrade head && python app/consumer.py"]

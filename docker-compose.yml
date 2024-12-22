@@ -35,6 +35,7 @@ services:
 
   postgres:
     image: postgres:15
+    container_name: postgres
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
@@ -43,14 +44,19 @@ services:
       - "5432:5432"
     networks:
       - app_app_network
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 
   data_processor:
     build:
       context: ./services/data_processor
+    container_name: data_processor
     env_file:
       - ./env/.env
-    environment:
-      - PYTHONPATH=/app/app
     depends_on:
       kafka:
         condition: service_healthy
@@ -58,9 +64,10 @@ services:
         condition: service_healthy
     volumes:
       - ./services/data_processor/logs:/app/logs
-    restart: unless-stopped
     networks:
       - app_app_network
+    restart: unless-stopped
+
 
   tg_standard_bot:
     build:

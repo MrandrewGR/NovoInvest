@@ -125,21 +125,21 @@ jobs:
             echo "No relevant changes detected. Exiting deployment."
             exit 0
           fi
-
+      
           if [ "${{ env.FULL_DEPLOY }}" == "true" ] || [ "${{ env.DOCKER_COMPOSE_CHANGED }}" == "true" ]; then
-            # Разворачиваем все сервисы одновременно
-            echo "Deploying all services..."
+            # Копируем весь проект на сервер
+            rsync -avz --exclude '.git' --exclude '.github' . dev@${{ secrets.SSH_HOST }}:/home/dev/app/
+            # Запускаем все сервисы
             ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose up -d --build --force-recreate"
           else
-            # Разворачиваем только изменённые сервисы
+            # Копируем только изменённые сервисы
             for service in $SERVICES; do
               echo "Deploying service: $service"
-              # Копирование кода микросервиса на сервер
+              # Копируем целиком папку этого микросервиса
               rsync -avz --exclude '.git' --exclude '.github' services/$service/ dev@${{ secrets.SSH_HOST }}:/home/dev/app/services/$service/
-              
-              # Перезапуск микросервиса с пересборкой
-              ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose up -d --build --force-recreate $service" | tee deploy_${service}.log
             done
+            # После копирования всех изменённых сервисов — поднимаем их
+            ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose up -d --build --force-recreate $SERVICES"
           fi
 
       # Шаг 13: Проверка статуса Docker Compose

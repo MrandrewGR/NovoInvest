@@ -1,8 +1,8 @@
 # File location: services/data_processor/app/models.py
 
+import datetime
 from sqlalchemy import Column, Integer, String, Text, DateTime
 from .database import Base
-import datetime
 
 class TelegramMessage(Base):
     __tablename__ = "telegram_messages"

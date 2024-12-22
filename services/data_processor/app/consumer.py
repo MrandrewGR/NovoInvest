@@ -5,8 +5,8 @@ import json
 import logging
 from kafka import KafkaConsumer
 from sqlalchemy.orm import Session
-from .database import SessionLocal, engine
-from .models import Base, TelegramMessage
+from .database import SessionLocal
+from .models import TelegramMessage
 
 LOG_FILE = os.getenv("LOG_FILE", "/app/logs/data_processor.log")
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
@@ -19,7 +19,6 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-Base.metadata.create_all(bind=engine)
 
 def get_db():
     db = SessionLocal()
@@ -27,6 +26,7 @@ def get_db():
         yield db
     finally:
         db.close()
+
 
 def process_message(message: dict, db: Session):
     try:
@@ -51,6 +51,7 @@ def process_message(message: dict, db: Session):
         logger.error(f"Ошибка при обработке сообщения ID {message.get('id')}: {e}")
         db.rollback()
 
+
 def consume():
     KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
     KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "telegram_channel_messages")
@@ -68,9 +69,11 @@ def consume():
 
     for message in consumer:
         msg = message.value
+        # Получаем сессию БД
         db_gen = get_db()
         db = next(db_gen)
         process_message(msg, db)
+
 
 if __name__ == "__main__":
     try:

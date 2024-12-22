@@ -47,10 +47,10 @@ services:
     networks:
       - app_app_network
 
-  data-processor:
+  data_processor:
     container_name: data
     build:
-      context: ./services/data-processor
+      context: ./services/data_processor
     env_file:
       - ./env/.env
     environment:
@@ -65,6 +65,7 @@ services:
     restart: unless-stopped
     networks:
       - app_app_network
+
 
   tg_standard_bot:
     container_name: tg_bot

@@ -63,7 +63,17 @@ jobs:
       - name: Test SSH Connection
         run: ssh dev@${{ secrets.SSH_HOST }} 'echo "SSH connection established"'
 
-      # Шаг 9: Установка Docker и Docker Compose на сервере (если не установлены)
+      # Шаг 9.1: Остановка сервиса Kafka для обеспечения чистого завершения
+      - name: Stop Kafka
+        run: |
+          ssh dev@${{ secrets.SSH_HOST }} "docker compose stop kafka"
+
+      # Шаг 9.2: Удаление устаревшего узла /brokers/ids/1 из Zookeeper
+      - name: Clean up Zookeeper node for Kafka broker
+        run: |
+          ssh dev@${{ secrets.SSH_HOST }} "docker exec zookeeper zkCli.sh -server localhost:2181 delete /brokers/ids/1 || echo 'Node /brokers/ids/1 does not exist'"
+
+      # Шаг 10: Установка Docker и Docker Compose на сервере (если не установлены)
       - name: Install Docker and Docker Compose on server
         run: |
           ssh dev@${{ secrets.SSH_HOST }} << 'EOF'
@@ -91,38 +101,25 @@ jobs:
             docker compose version
           EOF
 
-      # Шаг 9.1: Остановка сервисов Kafka и Zookeeper для обеспечения чистого завершения
-      - name: Stop Kafka and Zookeeper
-        run: |
-          ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose stop kafka zookeeper"
-
-      # Шаг 9.2: Удаление устаревшего узла /brokers/ids/1 из Zookeeper
-      - name: Clean up Zookeeper node for Kafka broker
-        run: |
-          ssh dev@${{ secrets.SSH_HOST }} << 'EOF'
-            # Запуск временного контейнера Zookeeper для выполнения команды удаления
-            docker run --rm --network=app_app_network confluentinc/cp-zookeeper:7.4.0 bash -c 'echo "delete /brokers/ids/1" | zkCli.sh -server zookeeper:2181'
-          EOF
-
-      # Шаг 10: Добавление пользователя в группу Docker
+      # Шаг 11: Добавление пользователя в группу Docker
       - name: Add user to Docker group
         run: ssh dev@${{ secrets.SSH_HOST }} "sudo usermod -aG docker dev"
 
-      # Шаг 11: Создание или обновление .env файла на сервере (если требуется)
+      # Шаг 12: Создание или обновление .env файла на сервере (если требуется)
       - name: Create or Update .env file on server
         run: |
           ssh dev@${{ secrets.SSH_HOST }} "mkdir -p /home/dev/app/env"
           ssh dev@${{ secrets.SSH_HOST }} "cat <<EOF > /home/dev/app/env/.env
-          TELEGRAM_API_ID=${{ secrets.TELEGRAM_API_ID }}
-          TELEGRAM_API_HASH=${{ secrets.TELEGRAM_API_HASH }}
-          TELEGRAM_PHONE=${{ secrets.TELEGRAM_PHONE }}
-          TELEGRAM_CHANNEL_ID=${{ secrets.TELEGRAM_CHANNEL_ID }}
-          TELEGRAM_CHAT_ID=${{ secrets.TELEGRAM_CHAT_ID }}
-          TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
-          KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-          EOF"
+TELEGRAM_API_ID=${{ secrets.TELEGRAM_API_ID }}
+TELEGRAM_API_HASH=${{ secrets.TELEGRAM_API_HASH }}
+TELEGRAM_PHONE=${{ secrets.TELEGRAM_PHONE }}
+TELEGRAM_CHANNEL_ID=${{ secrets.TELEGRAM_CHANNEL_ID }}
+TELEGRAM_CHAT_ID=${{ secrets.TELEGRAM_CHAT_ID }}
+TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
+KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+EOF"
 
-      # Шаг 12: Деплой изменённых микросервисов или полный деплой
+      # Шаг 13: Деплой изменённых микросервисов или полный деплой
       - name: Deploy services
         run: |
           if [ "${{ env.FULL_DEPLOY }}" == "true" ]; then
@@ -155,12 +152,12 @@ jobs:
             ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose up -d --build --force-recreate $SERVICES"
           fi
 
-      # Шаг 13: Проверка статуса Docker Compose
+      # Шаг 14: Проверка статуса Docker Compose
       - name: Check Docker Compose Status
         run: |
           ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose ps"
 
-      # Шаг 14: Просмотр логов для деплоенных микросервисов
+      # Шаг 15: Просмотр логов для деплоенных микросервисов
       - name: View Logs for Deployed Services
         run: |
           if [ "${{ env.FULL_DEPLOY }}" == "true" ] || [ "${{ env.DOCKER_COMPOSE_CHANGED }}" == "true" ]; then

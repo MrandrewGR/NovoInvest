@@ -31,8 +31,9 @@ services:
       KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_HEAP_OPTS: "-Xmx1G -Xms512M"
-    volumes:
-      - kafka_data:/var/lib/kafka/data
+      KAFKA_CONTROLLED_SHUTDOWN_ENABLE: "true"
+      KAFKA_CONTROLLED_SHUTDOWN_MAX_RETRIES: 3
+      KAFKA_CONTROLLED_SHUTDOWN_BACKOFF_MS: 5000- kafka_data:/var/lib/kafka/data
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]

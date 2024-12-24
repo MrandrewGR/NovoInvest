@@ -65,8 +65,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      kafka:
-        condition: service_healthy
     volumes:
       - ./services/data_processor/logs:/app/logs
     networks:

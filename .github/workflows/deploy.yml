@@ -66,7 +66,7 @@ jobs:
       # Шаг 9.1: Остановка сервиса Kafka для обеспечения чистого завершения
       - name: Stop Kafka
         run: |
-          ssh dev@${{ secrets.SSH_HOST }} "docker compose stop kafka"
+          ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose stop kafka"
 
       # Шаг 9.2: Удаление устаревшего узла /brokers/ids/1 из Zookeeper
       - name: Clean up Zookeeper node for Kafka broker

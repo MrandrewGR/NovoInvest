@@ -76,6 +76,9 @@ services:
       context: ./services/tg_standard_bot
     env_file:
       - ./env/.env
+    depends_on:
+      kafka:
+        condition: service_healthy
     volumes:
       - ./services/tg_standard_bot/app/logs:/app/logs
     restart: no
@@ -87,6 +90,9 @@ services:
       context: ./services/tg_user_bot
     env_file:
       - ./env/.env
+    depends_on:
+      kafka:
+        condition: service_healthy
     environment:
       - LOG_DIR=/app/logs
     volumes:

@@ -32,12 +32,13 @@ services:
       - kafka_data:/var/lib/kafka/data
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "9092"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
     networks:
       - app_app_network
+
 
   postgres:
     image: postgres:15

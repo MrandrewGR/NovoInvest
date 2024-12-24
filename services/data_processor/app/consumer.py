@@ -1,5 +1,3 @@
-# File location: services/data_processor/app/consumer.py
-
 import os
 import json
 import logging
@@ -9,7 +7,7 @@ from .database import SessionLocal
 from .models import TelegramMessage
 
 LOG_FILE = os.getenv("LOG_FILE", "/app/logs/data_processor.log")
-LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+LOG_LEVEL = os.getenv("LOG_LEVEL", "DEBUG").upper()  # Уровень DEBUG для подробного логирования
 
 logging.basicConfig(
     filename=LOG_FILE,
@@ -19,14 +17,12 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-
 def get_db():
     db = SessionLocal()
     try:
         yield db
     finally:
         db.close()
-
 
 def process_message(message: dict, db: Session):
     try:
@@ -51,29 +47,34 @@ def process_message(message: dict, db: Session):
         logger.error(f"Ошибка при обработке сообщения ID {message.get('id')}: {e}")
         db.rollback()
 
-
 def consume():
     KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
     KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "telegram_channel_messages")
 
-    consumer = KafkaConsumer(
-        KAFKA_TOPIC,
-        bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
-        auto_offset_reset='earliest',
-        enable_auto_commit=True,
-        group_id='data_processor_group',
-        value_deserializer=lambda x: json.loads(x.decode('utf-8'))
-    )
-
-    logger.info(f"Запущен потребитель Kafka для топика '{KAFKA_TOPIC}'.")
+    try:
+        consumer = KafkaConsumer(
+            KAFKA_TOPIC,
+            bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
+            auto_offset_reset='earliest',
+            enable_auto_commit=True,
+            group_id='data_processor_group',
+            value_deserializer=lambda x: json.loads(x.decode('utf-8'))
+        )
+        logger.info(f"Запущен потребитель Kafka для топика '{KAFKA_TOPIC}' на серверах {KAFKA_BOOTSTRAP_SERVERS}.")
+    except Exception as e:
+        logger.exception(f"Не удалось подключиться к Kafka: {e}")
+        raise
 
     for message in consumer:
-        msg = message.value
-        # Получаем сессию БД
-        db_gen = get_db()
-        db = next(db_gen)
-        process_message(msg, db)
-
+        try:
+            msg = message.value
+            logger.debug(f"Получено сообщение: {msg}")
+            # Получаем сессию БД
+            db_gen = get_db()
+            db = next(db_gen)
+            process_message(msg, db)
+        except Exception as e:
+            logger.exception(f"Ошибка при обработке сообщения: {e}")
 
 if __name__ == "__main__":
     try:

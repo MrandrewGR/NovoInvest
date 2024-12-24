@@ -91,6 +91,19 @@ jobs:
             docker compose version
           EOF
 
+      # Шаг 9.1: Остановка сервисов Kafka и Zookeeper для обеспечения чистого завершения
+      - name: Stop Kafka and Zookeeper
+        run: |
+          ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose stop kafka zookeeper"
+
+      # Шаг 9.2: Удаление устаревшего узла /brokers/ids/1 из Zookeeper
+      - name: Clean up Zookeeper node for Kafka broker
+        run: |
+          ssh dev@${{ secrets.SSH_HOST }} << 'EOF'
+            # Запуск временного контейнера Zookeeper для выполнения команды удаления
+            docker run --rm --network=app_app_network confluentinc/cp-zookeeper:7.4.0 bash -c 'echo "delete /brokers/ids/1" | zkCli.sh -server zookeeper:2181'
+          EOF
+
       # Шаг 10: Добавление пользователя в группу Docker
       - name: Add user to Docker group
         run: ssh dev@${{ secrets.SSH_HOST }} "sudo usermod -aG docker dev"

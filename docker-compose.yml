@@ -42,7 +42,6 @@ services:
     networks:
       - app_app_network
 
-
   postgres:
     image: postgres:15
     container_name: postgres

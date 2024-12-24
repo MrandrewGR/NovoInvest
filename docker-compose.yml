@@ -5,8 +5,14 @@ services:
     restart: unless-stopped
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+      ZOOKEEPER_INIT_LIMIT: 5
+      ZOOKEEPER_SYNC_LIMIT: 2
     ports:
       - "2181:2181"
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+      - zookeeper_log:/var/lib/zookeeper/log
     networks:
       - app_app_network
 
@@ -105,4 +111,8 @@ networks:
 
 volumes:
   kafka_data:
+    driver: local
+  zookeeper_data:
+    driver: local
+  zookeeper_log:
     driver: local

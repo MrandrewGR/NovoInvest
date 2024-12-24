@@ -65,8 +65,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      kafka:
-        condition: service_healthy
     volumes:
       - ./services/data_processor/logs:/app/logs
     networks:
@@ -92,9 +90,6 @@ services:
       context: ./services/tg_user_bot
     env_file:
       - ./env/.env
-    depends_on:
-      kafka:
-        condition: service_healthy
     environment:
       - LOG_DIR=/app/logs
     volumes:

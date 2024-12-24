@@ -18,6 +18,8 @@ services:
 
   kafka:
     image: confluentinc/cp-kafka:7.4.0
+    mem_limit: 2g
+    mem_reservation: 1g
     depends_on:
       - zookeeper
     ports:

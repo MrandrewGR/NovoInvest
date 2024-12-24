@@ -64,8 +64,6 @@ services:
     env_file:
       - ./env/.env
     depends_on:
-      kafka:
-        condition: service_healthy
       postgres:
         condition: service_healthy
     volumes:
@@ -80,9 +78,6 @@ services:
       context: ./services/tg_standard_bot
     env_file:
       - ./env/.env
-    depends_on:
-      kafka:
-        condition: service_healthy
     volumes:
       - ./services/tg_standard_bot/app/logs:/app/logs
     restart: no

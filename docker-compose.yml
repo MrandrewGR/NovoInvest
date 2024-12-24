@@ -56,7 +56,6 @@ services:
       timeout: 5s
       retries: 5
 
-
   data_processor:
     build:
       context: ./services/data_processor
@@ -71,7 +70,6 @@ services:
     networks:
       - app_app_network
     restart: unless-stopped
-
 
   tg_standard_bot:
     build:
@@ -95,7 +93,7 @@ services:
       - ./services/tg_user_bot/logs:/app/logs
       - ./services/tg_user_bot/media:/app/media
       - ./session_name.session:/app/session_name.session
-    restart: no
+    restart: unless-stopped
     networks:
       - app_app_network
 

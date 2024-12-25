@@ -52,6 +52,8 @@ services:
       POSTGRES_DB: data_processor_db
     ports:
       - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
     networks:
       - app_app_network
     healthcheck:
@@ -59,6 +61,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
 
   data_processor:
     build:
@@ -116,3 +119,6 @@ volumes:
     driver: local
   zookeeper_log:
     driver: local
+  postgres_data:
+    driver: local
+

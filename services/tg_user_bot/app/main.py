@@ -77,7 +77,7 @@ async def run_userbot():
                 logger.info(f"Отправка сообщения в Kafka топик '{topic}': {message}")
                 # Сериализуем сообщение
                 serialized_message = serialize_message(message)
-                await kafka_producer.send_message(topic, json.dumps(serialized_message))
+                await kafka_producer.send_message(topic, serialized_message)  # Удалено json.dumps
                 logger.info("Сообщение успешно отправлено в Kafka.")
                 message_buffer.task_done()
             except Exception as e:
@@ -88,6 +88,7 @@ async def run_userbot():
                     logger.warning("Буфер сообщений переполнен. Сообщение потеряно.")
                 kafka_producer = None  # Сбросить producer для повторной инициализации
                 await asyncio.sleep(RECONNECT_INTERVAL)
+
 
     async def consumer_task():
         nonlocal kafka_consumer

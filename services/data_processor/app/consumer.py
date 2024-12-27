@@ -13,6 +13,16 @@ from .config import settings
 # Настройка логирования
 logger = setup_logging()
 
+def safe_json_deserializer(x):
+    if not x:
+        logger.warning("Получено пустое сообщение, пропуск.")
+        return None
+    try:
+        return json.loads(x.decode('utf-8'))
+    except json.JSONDecodeError as e:
+        logger.error(f"Ошибка декодирования JSON: {e} | Сообщение: {x}")
+        return None
+
 def get_db():
     db = SessionLocal()
     try:
@@ -54,7 +64,7 @@ def consume():
             auto_offset_reset='earliest',
             enable_auto_commit=True,
             group_id='data_processor_group',
-            value_deserializer=lambda x: json.loads(x.decode('utf-8'))
+            value_deserializer=safe_json_deserializer
         )
         logger.info(f"Запущен потребитель Kafka для топика '{KAFKA_TOPIC}' на серверах {KAFKA_BOOTSTRAP_SERVERS}.")
     except Exception as e:
@@ -64,6 +74,8 @@ def consume():
     for message in consumer:
         try:
             msg = message.value
+            if msg is None:
+                continue  # Пропуск пустых или невалидных сообщений
             logger.debug(f"Получено сообщение: {msg}")
             # Получаем сессию БД
             db_gen = get_db()

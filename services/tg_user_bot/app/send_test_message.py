@@ -4,7 +4,7 @@ import asyncio
 import json
 from kafka import KafkaProducer
 from .config import settings
-from .logging_config import setup_logging
+from .logger import setup_logging
 
 logger = setup_logging()
 

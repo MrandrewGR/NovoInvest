@@ -35,13 +35,13 @@ def setup_logging():
             formatter = logging.Formatter('%(asctime)s %(levelname)s [%(name)s]: %(message)s')
             stream_handler.setFormatter(formatter)
             logger.addHandler(stream_handler)
-            logger.propagate = True  # Включена пропагация
+            logger.propagate = False  # Отключаем пропагацию
         except Exception as e:
             print(f"Ошибка при настройке логгера {logger_name}: {e}")
 
     # Основной логгер для пользовательского приложения (userbot)
     userbot_logger = logging.getLogger("userbot")
-    userbot_logger.propagate = True  # Включена пропагация
+    userbot_logger.propagate = False  # Отключена пропагация
 
     # Тестовое сообщение
     logging.getLogger("userbot").info("Логирование настроено корректно.")

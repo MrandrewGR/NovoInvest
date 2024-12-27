@@ -1,4 +1,4 @@
-# File location: services/tg_user_bot/app/kafka_consumer.py
+# File location: services/tg_ubot/app/kafka_consumer.py
 
 import logging
 from kafka import KafkaConsumer

@@ -1,4 +1,4 @@
-# File location: services/tg_user_bot/app/state.py
+# File location: services/tg_ubot/app/state.py
 
 import asyncio
 import logging

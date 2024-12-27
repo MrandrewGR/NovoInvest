@@ -1,4 +1,4 @@
-# services/tg_user_bot/app/send_test_message.py
+# services/tg_ubot/app/send_test_message.py
 
 import asyncio
 import json

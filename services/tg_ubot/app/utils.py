@@ -1,4 +1,4 @@
-# File location: services/tg_user_bot/app/utils.py
+# File location: services/tg_ubot/app/utils.py
 
 import asyncio
 import random

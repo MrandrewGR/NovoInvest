@@ -179,5 +179,4 @@ jobs:
       # Шаг 17: Проверка состояния Kafka
       - name: Check Kafka Health
         run: |
-          ssh dev@${{ secrets.SSH_HOST }} "docker exec kafka bash -c 'echo ruok | nc localhost 2181 && echo \"Kafka is healthy\" || echo \"Kafka is not healthy\"'"
-
+          ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose exec kafka bash -c 'echo ruok | nc localhost 2181 && echo \"Kafka is healthy\" || echo \"Kafka is not healthy\"'"

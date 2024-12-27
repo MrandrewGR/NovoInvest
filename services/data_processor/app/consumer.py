@@ -1,21 +1,17 @@
+# services/data_processor/app/consumer.py
+
 import os
 import json
-import logging
+import asyncio
 from kafka import KafkaConsumer
 from sqlalchemy.orm import Session
 from .database import SessionLocal
 from .models import TelegramMessage
+from .logging_config import setup_logging  # Импортируем функцию настройки логирования
+from .config import settings
 
-LOG_FILE = os.getenv("LOG_FILE", "/app/logs/data_processor.log")
-LOG_LEVEL = os.getenv("LOG_LEVEL", "DEBUG").upper()  # Уровень DEBUG для подробного логирования
-
-logging.basicConfig(
-    filename=LOG_FILE,
-    level=LOG_LEVEL,
-    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-)
-
-logger = logging.getLogger(__name__)
+# Настройка логирования
+logger = setup_logging()
 
 def get_db():
     db = SessionLocal()
@@ -48,8 +44,8 @@ def process_message(message: dict, db: Session):
         db.rollback()
 
 def consume():
-    KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
-    KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "telegram_channel_messages")
+    KAFKA_BOOTSTRAP_SERVERS = settings.KAFKA_BOOTSTRAP_SERVERS
+    KAFKA_TOPIC = settings.KAFKA_TOPIC
 
     try:
         consumer = KafkaConsumer(

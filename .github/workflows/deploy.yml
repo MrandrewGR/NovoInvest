@@ -135,7 +135,7 @@ jobs:
             echo "No relevant changes detected. Exiting deployment."
             exit 0
           fi
-      
+
           if [ "${{ env.FULL_DEPLOY }}" == "true" ] || [ "${{ env.DOCKER_COMPOSE_CHANGED }}" == "true" ]; then
             # Копируем весь проект на сервер
             rsync -avz --exclude '.git' --exclude '.github' . dev@${{ secrets.SSH_HOST }}:/home/dev/app/
@@ -170,3 +170,14 @@ jobs:
             echo "Логи сервиса: $service"
             ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose logs $service --tail 50"
           done
+
+      # Шаг 16: Обеспечение работы Kafka после деплоя
+      - name: Ensure Kafka is running
+        run: |
+          ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose up -d kafka"
+
+      # Шаг 17: Проверка состояния Kafka
+      - name: Check Kafka Health
+        run: |
+          ssh dev@${{ secrets.SSH_HOST }} "docker exec kafka bash -c 'echo ruok | nc localhost 2181 && echo \"Kafka is healthy\" || echo \"Kafka is not healthy\"'"
+

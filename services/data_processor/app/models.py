@@ -1,9 +1,9 @@
-# File location: services/data_processor/app/models.py
-
-from sqlalchemy import Column, Integer, String, Text, DateTime
+# File: services/data_processor/app/models.py
 import datetime
+from sqlalchemy import Column, Integer, String, Text, DateTime
 from .database import Base
 
+# Пример таблицы tg_ubot (как в нашей миграции)
 class TgUbot(Base):
     __tablename__ = "tg_ubot"
 

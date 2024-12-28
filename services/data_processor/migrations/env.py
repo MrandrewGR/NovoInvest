@@ -1,25 +1,30 @@
-from logging.config import fileConfig
+# File: services/data_processor/migrations/env.py
+
 import os
 import sys
+from logging.config import fileConfig
+
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
+
 from alembic import context
+
+# Добавляем /app в PYTHONPATH (если вдруг не хватает)
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)  # /app/migrations
+sys.path.insert(0, parent_dir)            # добавляем /app
+
+# Теперь импортируем настройки и модели
 from app.database import ensure_database_exists, DATABASE_URL
+from app.models import Base
 
-# Добавьте путь к PYTHONPATH при необходимости
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+# Сначала убеждаемся, что база существует
+ensure_database_exists(DATABASE_URL)
 
-# Импорт вашей базы и моделей
-from app.database import Base
-
-# Это объект метаданных, который нужен Alembic для автоматической генерации миграций
-target_metadata = Base.metadata
-
-# Этот объект позволяет читать настройки из alembic.ini
+# Настраиваем Alembic
 config = context.config
 fileConfig(config.config_file_name)
-
-ensure_database_exists(DATABASE_URL)
+target_metadata = Base.metadata
 
 def run_migrations_offline():
     """Run migrations in 'offline' mode."""
@@ -33,7 +38,6 @@ def run_migrations_offline():
     with context.begin_transaction():
         context.run_migrations()
 
-
 def run_migrations_online():
     """Run migrations in 'online' mode."""
     connectable = engine_from_config(
@@ -41,11 +45,11 @@ def run_migrations_online():
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )
+
     with connectable.connect() as connection:
         context.configure(connection=connection, target_metadata=target_metadata)
         with context.begin_transaction():
             context.run_migrations()
-
 
 if context.is_offline_mode():
     run_migrations_offline()

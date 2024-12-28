@@ -1,4 +1,4 @@
-# File location: services/data_processor/wait-for-services.sh
+# File: services/data_processor/wait-for-services.sh
 #!/bin/bash
 set -e
 
@@ -15,10 +15,10 @@ wait_for_service() {
   echo "$host is up - continuing"
 }
 
-# Ожидание PostgreSQL
+# Ожидание PostgreSQL (host=postgres, port=5432)
 wait_for_service postgres 5432
 
-# Ожидание Kafka
+# Ожидание Kafka (host=kafka, port=9092)
 wait_for_service kafka 9092
 
 exec "$@"

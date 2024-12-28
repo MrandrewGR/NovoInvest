@@ -1,4 +1,4 @@
-# services/data_processor/Dockerfile
+# File: services/data_processor/Dockerfile
 
 FROM python:3.10-slim
 
@@ -20,7 +20,7 @@ COPY . /app
 # Делаем скрипт ожидания сервисов исполняемым
 RUN chmod +x /app/wait-for-services.sh
 
-# Установка переменной окружения PYTHONPATH
+# Установка переменной окружения PYTHONPATH (важно, чтобы /app/ было корнем)
 ENV PYTHONPATH=/app
 
 # Запуск: ждем зависимости, выполняем миграции и запускаем consumer

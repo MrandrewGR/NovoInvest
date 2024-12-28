@@ -1,4 +1,5 @@
-# migrations/versions/20241225_initial_migration.py
+# File: services/data_processor/migrations/versions/20241225_initial_migration.py
+
 """Initial migration
 
 Revision ID: 20241225_initial_migration
@@ -16,8 +17,9 @@ branch_labels = None
 depends_on = None
 
 def upgrade():
+    # Пример создания таблицы 'tg_ubot'
     op.create_table(
-        'telegram_messages',
+        'tg_ubot',
         sa.Column('id', sa.Integer, primary_key=True, index=True),
         sa.Column('message_id', sa.Integer, unique=True, index=True, nullable=False),
         sa.Column('chat_id', sa.String, index=True, nullable=False),
@@ -27,4 +29,4 @@ def upgrade():
     )
 
 def downgrade():
-    op.drop_table('telegram_messages')
+    op.drop_table('tg_ubot')

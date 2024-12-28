@@ -1,11 +1,11 @@
 # File location: services/data_processor/app/models.py
 
-import datetime
 from sqlalchemy import Column, Integer, String, Text, DateTime
+import datetime
 from .database import Base
 
-class TelegramMessage(Base):
-    __tablename__ = "telegram_messages"
+class TgUbot(Base):
+    __tablename__ = "tg_ubot"
 
     id = Column(Integer, primary_key=True, index=True)
     message_id = Column(Integer, unique=True, index=True, nullable=False)

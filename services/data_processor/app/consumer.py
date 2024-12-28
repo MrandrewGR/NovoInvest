@@ -6,7 +6,7 @@ import asyncio
 from kafka import KafkaConsumer
 from sqlalchemy.orm import Session
 from .database import SessionLocal
-from .models import TelegramMessage
+from .models import TgUbot
 from .logging_config import setup_logging  # Импортируем функцию настройки логирования
 from .config import settings
 
@@ -38,17 +38,18 @@ def process_message(message: dict, db: Session):
         content = message.get("original_message", {}).get("message", "")
         media_path = message.get("downloaded_media", "")
 
-        telegram_msg = TelegramMessage(
+        # Вместо TelegramMessage - TgUbot
+        record = TgUbot(
             message_id=msg_id,
             chat_id=str(chat_id),
             date=date,
             content=content,
             media_path=media_path
         )
-        db.add(telegram_msg)
+        db.add(record)
         db.commit()
-        db.refresh(telegram_msg)
-        logger.info(f"Сохранено сообщение ID {msg_id} в базе данных.")
+        db.refresh(record)
+        logger.info(f"Сохранено сообщение ID {msg_id} в таблицу tg_ubot.")
     except Exception as e:
         logger.error(f"Ошибка при обработке сообщения ID {message.get('id')}: {e}")
         db.rollback()

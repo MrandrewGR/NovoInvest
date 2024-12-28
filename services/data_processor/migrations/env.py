@@ -4,6 +4,7 @@ import sys
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
 from alembic import context
+from app.database import ensure_database_exists, DATABASE_URL
 
 # Добавьте путь к PYTHONPATH при необходимости
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -18,6 +19,7 @@ target_metadata = Base.metadata
 config = context.config
 fileConfig(config.config_file_name)
 
+ensure_database_exists(DATABASE_URL)
 
 def run_migrations_offline():
     """Run migrations in 'offline' mode."""

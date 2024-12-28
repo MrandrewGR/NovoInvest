@@ -111,11 +111,24 @@ async def process_message_event(event, event_type, message_buffer, counter, clie
 
         # Если есть forward
         forward_info = {}
+
         if msg.forward:
             forward_info = {
+                "is_forwarded": True,
                 "forwarded_from": str(msg.forward.from_name or ""),
                 "forwarded_from_id": getattr(msg.forward.from_id, 'user_id', None),
                 "forwarded_date": msg.forward.date.isoformat() if msg.forward.date else None
+            }
+            try:
+                fwd_sender_entity = await msg.forward.get_chat()
+                if fwd_sender_entity:
+                    forward_info["forwarded_from_channel_id"] = getattr(fwd_sender_entity, 'id', None)
+                    forward_info["forwarded_from_channel_title"] = getattr(fwd_sender_entity, 'title', "")
+            except Exception as e:
+                logger.error(f"Не удалось получить чат для пересланного сообщения: {e}")
+        else:
+            forward_info = {
+                "is_forwarded": False
             }
 
         # «Цитаты» внутри самого текста — обычно вы парсите msg.raw_text на «> quote»

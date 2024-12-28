@@ -13,7 +13,7 @@ from .logger import setup_logging
 from .kafka_producer import KafkaMessageProducer
 from .kafka_consumer import KafkaMessageConsumer
 from .handlers.unified_handler import register_unified_handler
-from .utils import ensure_dir
+from .utils import ensure_dir, human_like_delay
 from .state import MessageCounter
 
 MAX_BUFFER_SIZE = 10000
@@ -67,6 +67,7 @@ async def run_userbot():
                 # Попробуем переоткрыть producer
                 kafka_producer = None
                 await asyncio.sleep(RECONNECT_INTERVAL)
+            await human_like_delay(1.0, 15.0)
 
     async def initialize_kafka_consumer():
         nonlocal kafka_consumer

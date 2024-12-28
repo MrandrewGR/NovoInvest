@@ -1,12 +1,11 @@
 # services/tg_ubot/app/config.py
 
-from pydantic import BaseSettings, Field
+from pydantic import BaseSettings
 from typing import List
-import os
 
 
 class Settings(BaseSettings):
-    # Список целевых чатов и каналов из .env, разделённых запятыми
+    # Список целевых чатов и каналов из .env, как JSON массив
     TELEGRAM_TARGET_IDS: List[int]
 
     TELEGRAM_API_ID: int

@@ -72,6 +72,8 @@ services:
     container_name: data_processor
     env_file:
       - ./env/.env
+    environment:
+      - KAFKA_UBOT_OUTPUT_TOPIC=tg_ubot_output  # Переопределяем топик
     depends_on:
       postgres:
         condition: service_healthy
@@ -80,6 +82,7 @@ services:
     networks:
       - app_app_network
     restart: unless-stopped
+
 
   tg_standard_bot:
     build:

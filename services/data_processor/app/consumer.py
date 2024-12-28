@@ -1,16 +1,14 @@
-# services/data_processor/app/consumer.py
+# File: services/data_processor/app/consumer.py
 
-import os
 import json
-import asyncio
+import logging
 from kafka import KafkaConsumer
 from sqlalchemy.orm import Session
 from .database import SessionLocal
 from .models import TgUbot
-from .logging_config import setup_logging  # Импортируем функцию настройки логирования
+from .logging_config import setup_logging
 from .config import settings
 
-# Настройка логирования
 logger = setup_logging()
 
 def safe_json_deserializer(x):
@@ -31,14 +29,14 @@ def get_db():
         db.close()
 
 def process_message(message: dict, db: Session):
+    # Здесь логика записи в БД
     try:
         msg_id = message.get("id")
         chat_id = message.get("chat_id")
-        date = message.get("date")
+        date = message.get("date")  # Строка даты, убедитесь, что она парсится
         content = message.get("original_message", {}).get("message", "")
         media_path = message.get("downloaded_media", "")
 
-        # Вместо TelegramMessage - TgUbot
         record = TgUbot(
             message_id=msg_id,
             chat_id=str(chat_id),
@@ -49,14 +47,15 @@ def process_message(message: dict, db: Session):
         db.add(record)
         db.commit()
         db.refresh(record)
-        logger.info(f"Сохранено сообщение ID {msg_id} в таблицу tg_ubot.")
+        logger.info(f"Сохранено сообщение ID={msg_id} в таблицу tg_ubot.")
     except Exception as e:
-        logger.error(f"Ошибка при обработке сообщения ID {message.get('id')}: {e}")
+        logger.error(f"Ошибка при обработке сообщения ID={message.get('id')}: {e}")
         db.rollback()
 
 def consume():
     KAFKA_BOOTSTRAP_SERVERS = settings.KAFKA_BOOTSTRAP_SERVERS
-    KAFKA_TOPIC = settings.KAFKA_TOPIC
+    # Вместо старого топика читаем KAFKA_UBOT_OUTPUT_TOPIC
+    KAFKA_TOPIC = settings.KAFKA_UBOT_OUTPUT_TOPIC
 
     try:
         consumer = KafkaConsumer(
@@ -67,7 +66,7 @@ def consume():
             group_id='data_processor_group',
             value_deserializer=safe_json_deserializer
         )
-        logger.info(f"Запущен потребитель Kafka для топика '{KAFKA_TOPIC}' на серверах {KAFKA_BOOTSTRAP_SERVERS}.")
+        logger.info(f"Запущен KafkaConsumer для топика '{KAFKA_TOPIC}' на {KAFKA_BOOTSTRAP_SERVERS}.")
     except Exception as e:
         logger.exception(f"Не удалось подключиться к Kafka: {e}")
         raise
@@ -78,12 +77,18 @@ def consume():
             if msg is None:
                 continue  # Пропуск пустых или невалидных сообщений
             logger.debug(f"Получено сообщение: {msg}")
-            # Получаем сессию БД
+
             db_gen = get_db()
             db = next(db_gen)
             process_message(msg, db)
         except Exception as e:
             logger.exception(f"Ошибка при обработке сообщения: {e}")
+        finally:
+            # Закрываем сессию
+            try:
+                db_gen.close()
+            except:
+                pass
 
 if __name__ == "__main__":
     try:

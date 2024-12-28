@@ -4,12 +4,10 @@ import os
 class Settings:
     LOG_FILE = os.getenv("LOG_FILE", "/app/logs/data_processor.log")
     LOG_LEVEL = os.getenv("LOG_LEVEL", "DEBUG").upper()
-    # Адрес БД (можно переопределять извне через переменные окружения)
-    DATABASE_URL = os.getenv(
-        "DATABASE_URL",
-        "postgresql://postgres:postgres@postgres:5432/data_processor_db"
-    )
+    DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@postgres:5432/data_processor_db")
+
     KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
-    KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "telegram_channel_messages")
+    # Тот самый новый топик:
+    KAFKA_UBOT_OUTPUT_TOPIC = os.getenv("KAFKA_UBOT_OUTPUT_TOPIC", "tg_ubot_output")
 
 settings = Settings()

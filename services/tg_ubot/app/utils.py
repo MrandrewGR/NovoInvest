@@ -4,10 +4,9 @@ import asyncio
 import random
 import logging
 from zoneinfo import ZoneInfo
-from datetime import datetime, time
+from datetime import datetime, time  # Импортируем класс datetime напрямую
 from .config import settings
 import os
-import datetime
 
 
 logger = logging.getLogger("utils")

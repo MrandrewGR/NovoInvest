@@ -5,7 +5,7 @@ import asyncio
 from telethon import TelegramClient, events
 from telethon.tl.types import Message
 from app.config import settings
-from .utils import human_like_delay, get_delay_settings, serialize_message, ensure_dir
+from app.utils import human_like_delay, get_delay_settings, serialize_message, ensure_dir
 import os
 
 logger = logging.getLogger("unified_handler")
@@ -39,9 +39,6 @@ async def process_message_event(event, event_type, message_buffer, counter, clie
     try:
         msg: Message = event.message
         # Задержка "по-человечески"
-        # Определим, чат или канал → используем те же get_delay_settings,
-        # можно условно назвать "chat" (или "channel"), или сделать логику по типу
-        # (для простоты используем "chat")
         min_delay, max_delay = get_delay_settings("chat")
         await human_like_delay(min_delay, max_delay)
 
@@ -85,11 +82,9 @@ async def process_message_event(event, event_type, message_buffer, counter, clie
             logger.error(f"Не удалось получить информацию о чате/канале: {e}")
 
         # Собираем реакции (если Telethon поддерживает msg.reactions)
-        # В новых версиях Telethon: message.reactions.available_reactions, message.reactions.results
-        # Но они могут быть None. Примерный код:
         reactions_info = []
         if getattr(msg, "reactions", None):
-            if msg.reactions.results:
+            if msg.reactions and msg.reactions.results:
                 for r in msg.reactions.results:
                     reaction_emoji = getattr(r.reaction, "emoticon", "")
                     count = r.count
@@ -123,9 +118,7 @@ async def process_message_event(event, event_type, message_buffer, counter, clie
                 "forwarded_date": msg.forward.date.isoformat() if msg.forward.date else None
             }
 
-        # «Цитаты» внутри самого текста — обычно вы парсите msg.raw_text на «> quote»,
-        # но Telethon прямых полей для «цитат» не даёт.  Можете придумать условное правило.
-        # Здесь — простой пример поиска строк, начинающихся на ">"
+        # «Цитаты» внутри самого текста — обычно вы парсите msg.raw_text на «> quote»
         quotes = []
         if msg.raw_text:
             for line in msg.raw_text.splitlines():
@@ -154,6 +147,5 @@ async def process_message_event(event, event_type, message_buffer, counter, clie
         # Складываем в буфер (тема + словарь)
         await message_buffer.put((kafka_topic, message_data))
         logger.info(f"[unified_handler] Обработано сообщение {msg.id} из {chat_info.get('chat_title','')}")
-
     except Exception as e:
         logger.exception(f"Ошибка в process_message_event: {e}")

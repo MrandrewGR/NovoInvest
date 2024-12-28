@@ -1,6 +1,8 @@
+# services/tg_ubot/app/logger.py
+
 import logging
 import os
-from .utils import ensure_dir
+from app.utils import ensure_dir
 from .config import settings
 
 def setup_logging():
@@ -15,8 +17,7 @@ def setup_logging():
 
     # Список логгеров, которым необходимо добавить дополнительные обработчики (если нужно)
     module_loggers = [
-        "handlers.chat_handler",
-        "handlers.channel_handler",
+        "unified_handler",
         "kafka_producer",
         "kafka_consumer",
         "utils",

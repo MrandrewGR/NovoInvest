@@ -21,7 +21,7 @@ COPY . /app
 RUN chmod +x /app/wait-for-services.sh
 
 # Установка переменной окружения PYTHONPATH
-ENV PYTHONPATH=/app/app
+ENV PYTHONPATH=/app
 
 # Запуск: ждем зависимости, выполняем миграции и запускаем consumer
 CMD ["bash", "-c", "./wait-for-services.sh && alembic upgrade head && python -m app.consumer"]

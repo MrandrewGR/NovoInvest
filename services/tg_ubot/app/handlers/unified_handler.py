@@ -4,7 +4,7 @@ import logging
 import asyncio
 from telethon import TelegramClient, events
 from telethon.tl.types import Message
-from .config import settings
+from app.config import settings
 from .utils import human_like_delay, get_delay_settings, serialize_message, ensure_dir
 import os
 

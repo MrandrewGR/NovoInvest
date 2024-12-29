@@ -17,16 +17,16 @@ from .state import MessageCounter
 MAX_BUFFER_SIZE = 10000
 RECONNECT_INTERVAL = 10
 
-
 async def run_userbot():
-    # Убеждаемся, что папки для логов и media существуют
+    # Убедитесь, что директории для логов и медиа существуют
     ensure_dir(settings.MEDIA_DIR)
     ensure_dir(os.path.dirname(settings.LOG_FILE))
 
     logger = setup_logging()
 
-    # Используем переменные напрямую из settings, которые уже заполнены из окружения Docker Compose
-    client = TelegramClient('session_name', settings.TELEGRAM_API_ID, settings.TELEGRAM_API_HASH)
+    # Получаем путь к файлу сессии из переменной окружения или используем значение по умолчанию
+    session_file = os.getenv('SESSION_FILE', 'session_name.session')
+    client = TelegramClient(session_file, settings.TELEGRAM_API_ID, settings.TELEGRAM_API_HASH)
 
     message_buffer = asyncio.Queue(maxsize=MAX_BUFFER_SIZE)
 
@@ -146,17 +146,17 @@ async def run_userbot():
     counter = MessageCounter(client)
 
     try:
-        # Запускаем телеграм-клиент
+        # Запускаем телеграм-клиент без запроса ввода
         await client.start()
         if not await client.is_user_authorized():
-            logger.error("Telegram клиент не авторизован. Проверьте session_name.session.")
+            logger.error("Telegram клиент не авторизован. Проверьте session_file.")
             shutdown_event.set()
             return
 
         me = await client.get_me()
         logger.info(f"Userbot запущен как: @{me.username} (ID: {me.id})")
 
-        # Регистрируем единый обработчик для всех входящих
+        # Регистрируем единый обработчик для всех входящих сообщений
         register_unified_handler(client, message_buffer, counter, userbot_active)
 
         # Создаём задачи: продьюсер, консумер (по необходимости) и сам Telethon
@@ -182,7 +182,6 @@ async def run_userbot():
             await kafka_consumer.close()
             logger.info("Kafka consumer закрыт.")
         logger.info("Сервис tg_ubot завершил работу корректно.")
-
 
 if __name__ == "__main__":
     try:

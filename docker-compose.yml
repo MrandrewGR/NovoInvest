@@ -1,3 +1,4 @@
+# File location: ./docker-compose.yml
 version: '3.8'
 services:
   zookeeper:
@@ -64,12 +65,16 @@ services:
       context: ./services/tg_ubot
     env_file:
       - /home/dev/app/env/tg_ubot.env
+    environment:
+      - SESSION_FILE=/app/session_name.session
     depends_on:
       kafka:
         condition: service_healthy
     restart: unless-stopped
     networks:
       - app_app_network
+    volumes:
+      - /home/dev/app/session_name.session:/app/session_name.session
 
   db:
     container_name: db

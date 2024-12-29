@@ -118,18 +118,20 @@ jobs:
       - name: Add user to Docker group
         run: ssh dev@${{ secrets.SSH_HOST }} "sudo usermod -aG docker dev"
 
+
       # Шаг 12: Создание или обновление .env файла на сервере (если требуется)
       - name: Create or Update .env file on server
         run: |
           ssh dev@${{ secrets.SSH_HOST }} "mkdir -p /home/dev/app/env"
           ssh dev@${{ secrets.SSH_HOST }} "cat <<EOF > /home/dev/app/env/.env
-          TELEGRAM_API_ID=${{ secrets.TELEGRAM_API_ID }}
-          TELEGRAM_API_HASH=${{ secrets.TELEGRAM_API_HASH }}
-          TELEGRAM_PHONE=${{ secrets.TELEGRAM_PHONE }}
-          TELEGRAM_TARGET_IDS=${{ secrets.TELEGRAM_TARGET_IDS }}
-          TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
-          KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-          EOF"
+TELEGRAM_API_ID=${{ secrets.TELEGRAM_API_ID }}
+TELEGRAM_API_HASH=${{ secrets.TELEGRAM_API_HASH }}
+TELEGRAM_PHONE=${{ secrets.TELEGRAM_PHONE }}
+TELEGRAM_TARGET_IDS=${{ secrets.TELEGRAM_TARGET_IDS }}
+TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
+KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+EOF"
+
       # Шаг 12.1 проверка секретов
       - name: Verify .env file on server
         run: |

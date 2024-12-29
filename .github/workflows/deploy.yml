@@ -76,7 +76,25 @@ jobs:
       - name: Test SSH Connection
         run: ssh dev@${{ secrets.SSH_HOST }} 'echo "SSH connection established"'
 
-      # Шаг 9.1: Остановка сервиса Kafka для обеспечения чистого завершения
+      # Шаг 12: Создание или обновление .env файла на сервере (если требуется)
+      - name: Create or Update .env file on server
+        run: |
+          ssh dev@${{ secrets.SSH_HOST }} "rm -f /home/dev/app/env/.env"
+          
+          ssh dev@${{ secrets.SSH_HOST }} "mkdir -p /home/dev/app/env"
+          ssh dev@${{ secrets.SSH_HOST }} "echo TELEGRAM_API_ID=${{ secrets.TELEGRAM_API_ID }} > /home/dev/app/env/.env"
+          ssh dev@${{ secrets.SSH_HOST }} "echo TELEGRAM_API_HASH=${{ secrets.TELEGRAM_API_HASH }} >> /home/dev/app/env/.env"
+          ssh dev@${{ secrets.SSH_HOST }} "echo TELEGRAM_PHONE=${{ secrets.TELEGRAM_PHONE }} >> /home/dev/app/env/.env"
+          ssh dev@${{ secrets.SSH_HOST }} "echo TELEGRAM_TARGET_IDS=${{ secrets.TELEGRAM_TARGET_IDS }} >> /home/dev/app/env/.env"
+          ssh dev@${{ secrets.SSH_HOST }} "echo TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }} >> /home/dev/app/env/.env"
+          ssh dev@${{ secrets.SSH_HOST }} "echo KAFKA_BOOTSTRAP_SERVERS=kafka:9092 >> /home/dev/app/env/.env"
+
+      # Шаг 12.1: Проверка содержимого .env файла
+      - name: Verify .env file on server
+        run: |
+          ssh dev@${{ secrets.SSH_HOST }} "grep TELEGRAM_TARGET_IDS /home/dev/app/env/.env && echo 'Проверка завершена.'"          
+          
+          # Шаг 9.1: Остановка сервиса Kafka для обеспечения чистого завершения
       - name: Stop Kafka
         run: |
           ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose stop kafka"
@@ -117,24 +135,6 @@ jobs:
       # Шаг 11: Добавление пользователя в группу Docker
       - name: Add user to Docker group
         run: ssh dev@${{ secrets.SSH_HOST }} "sudo usermod -aG docker dev"
-
-      # Шаг 12: Создание или обновление .env файла на сервере (если требуется)
-      - name: Create or Update .env file on server
-        run: |
-          ssh dev@${{ secrets.SSH_HOST }} "rm -f /home/dev/app/env/.env"
-          
-          ssh dev@${{ secrets.SSH_HOST }} "mkdir -p /home/dev/app/env"
-          ssh dev@${{ secrets.SSH_HOST }} "echo TELEGRAM_API_ID=${{ secrets.TELEGRAM_API_ID }} > /home/dev/app/env/.env"
-          ssh dev@${{ secrets.SSH_HOST }} "echo TELEGRAM_API_HASH=${{ secrets.TELEGRAM_API_HASH }} >> /home/dev/app/env/.env"
-          ssh dev@${{ secrets.SSH_HOST }} "echo TELEGRAM_PHONE=${{ secrets.TELEGRAM_PHONE }} >> /home/dev/app/env/.env"
-          ssh dev@${{ secrets.SSH_HOST }} "echo TELEGRAM_TARGET_IDS=${{ secrets.TELEGRAM_TARGET_IDS }} >> /home/dev/app/env/.env"
-          ssh dev@${{ secrets.SSH_HOST }} "echo TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }} >> /home/dev/app/env/.env"
-          ssh dev@${{ secrets.SSH_HOST }} "echo KAFKA_BOOTSTRAP_SERVERS=kafka:9092 >> /home/dev/app/env/.env"
-
-      # Шаг 12.1: Проверка содержимого .env файла
-      - name: Verify .env file on server
-        run: |
-          ssh dev@${{ secrets.SSH_HOST }} "grep TELEGRAM_TARGET_IDS /home/dev/app/env/.env && echo 'Проверка завершена.'"
 
       # Шаг 13: Деплой изменённых микросервисов или полный деплой
       - name: Deploy services

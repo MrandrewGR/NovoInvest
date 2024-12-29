@@ -121,6 +121,8 @@ jobs:
       # Шаг 12: Создание или обновление .env файла на сервере (если требуется)
       - name: Create or Update .env file on server
         run: |
+          ssh dev@${{ secrets.SSH_HOST }} "rm -f /home/dev/app/env/.env"
+          
           ssh dev@${{ secrets.SSH_HOST }} "mkdir -p /home/dev/app/env"
           ssh dev@${{ secrets.SSH_HOST }} "echo TELEGRAM_API_ID=${{ secrets.TELEGRAM_API_ID }} > /home/dev/app/env/.env"
           ssh dev@${{ secrets.SSH_HOST }} "echo TELEGRAM_API_HASH=${{ secrets.TELEGRAM_API_HASH }} >> /home/dev/app/env/.env"

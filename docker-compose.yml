@@ -64,7 +64,7 @@ services:
     build:
       context: ./services/tg_ubot
     env_file:
-      - ./env/.env
+      - /home/dev/app/env/.env  # Указываем абсолютный путь
     depends_on:
       kafka:
         condition: service_healthy

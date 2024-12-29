@@ -1,8 +1,6 @@
-# services/tg_ubot/app/config.py
-
 from pydantic import BaseSettings
 from typing import List
-
+import os
 
 class Settings(BaseSettings):
     # Список целевых чатов и каналов из .env, как JSON массив
@@ -40,8 +38,8 @@ class Settings(BaseSettings):
     CHANNEL_DELAY_MAX_NIGHT: float = 20.0
 
     class Config:
-        env_file = ".env"
+        # Указываем абсолютный путь к .env файлу
+        env_file = "/home/dev/app/env/.env"
         env_file_encoding = 'utf-8'
-
 
 settings = Settings()

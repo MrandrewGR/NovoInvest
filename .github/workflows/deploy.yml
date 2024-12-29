@@ -93,8 +93,20 @@ jobs:
       - name: Verify .env file on server
         run: |
           ssh dev@${{ secrets.SSH_HOST }} "grep TELEGRAM_TARGET_IDS /home/dev/app/env/.env && echo 'Проверка завершена.'"          
-          
-          # Шаг 9.1: Остановка сервиса Kafka для обеспечения чистого завершения
+
+      # deploy session_tg
+      - name: Decode and upload Telethon session
+        run: |
+          # 1. Создадим локальный файл session_name.session из секретной Base64 строки
+          echo "${{ secrets.SESSION_FILE_BASE64 }}" | base64 -d > session_name.session
+      
+          # 2. Передадим этот файл на сервер, в /home/dev/app/ (или другую директорию)
+          rsync -avz session_name.session dev@${{ secrets.SSH_HOST }}:/home/dev/app/
+      
+          # 3. Удалим временный файл
+          rm session_name.session
+
+      # Шаг 9.1: Остановка сервиса Kafka для обеспечения чистого завершения
       - name: Stop Kafka
         run: |
           ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose stop kafka"

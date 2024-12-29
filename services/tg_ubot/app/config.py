@@ -8,8 +8,6 @@ class Settings(BaseSettings):
 
     TELEGRAM_API_ID: int
     TELEGRAM_API_HASH: str
-    TELEGRAM_PHONE: str
-    TELEGRAM_BOT_TOKEN: str
 
     # Kafka
     KAFKA_BOOTSTRAP_SERVERS: str = "kafka:9092"

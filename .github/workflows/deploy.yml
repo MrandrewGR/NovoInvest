@@ -120,7 +120,8 @@ jobs:
       # После передачи файла сессии
       - name: Restart tg_ubot Service
         run: |
-          ssh dev@${{ secrets.SSH_HOST }} "docker compose restart tg_ubot"
+          ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose restart tg_ubot"
+
 
       # Шаг 9.1: Остановка сервиса Kafka для обеспечения чистого завершения
       - name: Stop Kafka

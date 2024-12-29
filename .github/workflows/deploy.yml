@@ -88,6 +88,7 @@ jobs:
           ssh dev@${{ secrets.SSH_HOST }} "echo TELEGRAM_TARGET_IDS=${{ secrets.TELEGRAM_TARGET_IDS }} >> /home/dev/app/env/.env"
           ssh dev@${{ secrets.SSH_HOST }} "echo TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }} >> /home/dev/app/env/.env"
           ssh dev@${{ secrets.SSH_HOST }} "echo KAFKA_BOOTSTRAP_SERVERS=kafka:9092 >> /home/dev/app/env/.env"
+          #
 
       # Шаг 12.1: Проверка содержимого .env файла
       - name: Verify .env file on server

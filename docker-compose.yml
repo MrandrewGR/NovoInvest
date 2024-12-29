@@ -58,13 +58,12 @@ services:
       - app_app_network
 
 
-  # Пример tg_ubot
   tg_ubot:
     container_name: tg_ubot
     build:
       context: ./services/tg_ubot
     env_file:
-      - /home/dev/app/env/.env  # Указываем абсолютный путь
+      - /home/dev/app/env/.env
     depends_on:
       kafka:
         condition: service_healthy
@@ -72,7 +71,6 @@ services:
     networks:
       - app_app_network
 
-  # Новый сервис для консюмера - название "db"
   db:
     container_name: db
     build:
@@ -85,7 +83,6 @@ services:
     restart: unless-stopped
     networks:
       - app_app_network
-    # Если нужны порты наружу, пропишите "ports:", но обычно не нужно
 
 networks:
   app_app_network:

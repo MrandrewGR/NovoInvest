@@ -57,18 +57,6 @@ services:
     networks:
       - app_app_network
 
-  # Пример tg_standard_bot (не меняем, как у вас было)
-  tg_standard_bot:
-    build:
-      context: ./services/tg_standard_bot
-    env_file:
-      - ./env/.env
-    depends_on:
-      kafka:
-        condition: service_healthy
-    restart: no
-    networks:
-      - app_app_network
 
   # Пример tg_ubot
   tg_ubot:

@@ -1,4 +1,5 @@
 /Users/andreigrishin/Documents/GitHub/NovoInvest
+├── NovoInvest.mdj
 ├── docker-compose.yml
 ├── env
 ├── requirements
@@ -12,9 +13,12 @@
 │   │   ├── app
 │   │   │   ├── __init__.py
 │   │   │   ├── __pycache__
+│   │   │   ├── config.py
 │   │   │   ├── consumer.py
 │   │   │   ├── database.py
-│   │   │   └── models.py
+│   │   │   ├── logging_config.py
+│   │   │   ├── models.py
+│   │   │   └── utils.py
 │   │   ├── logs
 │   │   ├── migrations
 │   │   │   ├── README
@@ -23,6 +27,9 @@
 │   │   │   ├── env.py
 │   │   │   ├── script.py.mako
 │   │   │   └── versions
+│   │   │       ├── 20241225_initial_migration.py
+│   │   │       └── migrations
+│   │   │           └── versions
 │   │   ├── requirements.txt
 │   │   └── wait-for-services.sh
 │   ├── tg_standard_bot
@@ -37,7 +44,7 @@
 │   │   │   ├── logger.py
 │   │   │   └── main.py
 │   │   └── requirements.txt
-│   └── tg_user_bot
+│   └── tg_ubot
 │       ├── Dockerfile
 │       ├── app
 │       │   ├── README.md
@@ -45,12 +52,12 @@
 │       │   ├── config.py
 │       │   ├── handlers
 │       │   │   ├── __init__.py
-│       │   │   ├── channel_handler.py
-│       │   │   └── chat_handler.py
+│       │   │   └── unified_handler.py
 │       │   ├── kafka_consumer.py
 │       │   ├── kafka_producer.py
 │       │   ├── logger.py
 │       │   ├── main.py
+│       │   ├── send_test_message.py
 │       │   ├── state.py
 │       │   └── utils.py
 │       ├── media

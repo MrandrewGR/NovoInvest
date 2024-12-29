@@ -154,13 +154,13 @@ async def run_userbot():
 
         # Запускаем задачи
         producer = asyncio.create_task(producer_task())
-        consumer = asyncio.create_task(consumer_task())  # Если нужна логика инструкций
+        # consumer = asyncio.create_task(consumer_task())  # Если нужна логика инструкций
 
         # client.run_until_disconnected() блокирует, поэтому собираем в gather
         await asyncio.gather(
             client.run_until_disconnected(),
             producer,
-            consumer,
+           # consumer,
             shutdown_event.wait()
         )
 

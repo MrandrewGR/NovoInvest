@@ -2,24 +2,18 @@ version: '3.8'
 services:
   zookeeper:
     image: confluentinc/cp-zookeeper:7.4.0
+    container_name: zookeeper
     restart: unless-stopped
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
-      ZOOKEEPER_TICK_TIME: 2000
-      ZOOKEEPER_INIT_LIMIT: 5
-      ZOOKEEPER_SYNC_LIMIT: 2
     ports:
       - "2181:2181"
-    volumes:
-      - zookeeper_data:/var/lib/zookeeper/data
-      - zookeeper_log:/var/lib/zookeeper/log
     networks:
       - app_app_network
 
   kafka:
     image: confluentinc/cp-kafka:7.4.0
-    mem_limit: 2g
-    mem_reservation: 1g
+    container_name: kafka
     depends_on:
       - zookeeper
     ports:
@@ -30,25 +24,19 @@ services:
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
       KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_HEAP_OPTS: "-Xmx1G -Xms512M"
-      KAFKA_CONTROLLED_SHUTDOWN_ENABLE: "true"
-      KAFKA_CONTROLLED_SHUTDOWN_MAX_RETRIES: 3
-      KAFKA_CONTROLLED_SHUTDOWN_BACKOFF_MS: "5000"
-    volumes:
-      - kafka_data:/var/lib/kafka/data
-    restart: unless-stopped
+    networks:
+      - app_app_network
     healthcheck:
       test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
       interval: 15s
       timeout: 10s
       retries: 10
-    networks:
-      - app_app_network
 
-
+  # PostgreSQL
   postgres:
-    image: postgres:15
+    image: postgres:15-alpine
     container_name: postgres
+    restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
@@ -56,34 +44,11 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql/data
     networks:
       - app_app_network
-    healthcheck:
-      test: ["CMD", "pg_isready", "-U", "postgres"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
 
-
-  data_processor:
-    build:
-      context: ./services/data_processor
-    container_name: data_processor
-    env_file:
-      - ./env/.env
-    environment:
-      - KAFKA_UBOT_OUTPUT_TOPIC=tg_ubot_output  # Переопределяем топик
-    depends_on:
-      postgres:
-        condition: service_healthy
-    volumes:
-      - ./services/data_processor/logs:/app/logs
-    networks:
-      - app_app_network
-    restart: unless-stopped
-
-
+  # Пример tg_standard_bot (не меняем, как у вас было)
   tg_standard_bot:
     build:
       context: ./services/tg_standard_bot
@@ -92,30 +57,39 @@ services:
     depends_on:
       kafka:
         condition: service_healthy
-    volumes:
-      - ./services/tg_standard_bot/app/logs:/app/logs
     restart: no
     networks:
       - app_app_network
 
+  # Пример tg_ubot
   tg_ubot:
     build:
-      context: services/tg_ubot
+      context: ./services/tg_ubot
     env_file:
       - ./env/.env
-    environment:
-      - LOG_DIR=/app/logs
-    volumes:
-      - ./services/tg_ubot/logs:/app/logs
-      - ./services/tg_ubot/media:/app/media
-      - ./session_name.session:/app/session_name.session
+    depends_on:
+      kafka:
+        condition: service_healthy
     restart: unless-stopped
     networks:
       - app_app_network
 
+  # Новый сервис для консюмера - название "db"
+  db:
+    build:
+      context: ./services/db
+    env_file:
+      - ./env/.env  # должно содержать KAFKA_UBOT_OUTPUT_TOPIC, DB_HOST=postgres и т.п.
+    depends_on:
+      - kafka
+      - postgres
+    restart: unless-stopped
+    networks:
+      - app_app_network
+    # Если нужны порты наружу, пропишите "ports:", но обычно не нужно
+
 networks:
   app_app_network:
-    name: app_app_network
     driver: bridge
 
 volumes:
@@ -125,6 +99,6 @@ volumes:
     driver: local
   zookeeper_log:
     driver: local
-  postgres_data:
+  pgdata:
     driver: local
 

@@ -1,5 +1,3 @@
-# services/tg_ubot/app/main.py
-
 import asyncio
 import logging
 import os
@@ -21,10 +19,13 @@ RECONNECT_INTERVAL = 10
 
 
 async def run_userbot():
+    # Убеждаемся, что папки для логов и media существуют
     ensure_dir(settings.MEDIA_DIR)
     ensure_dir(os.path.dirname(settings.LOG_FILE))
 
     logger = setup_logging()
+
+    # Используем переменные напрямую из settings, которые уже заполнены из окружения Docker Compose
     client = TelegramClient('session_name', settings.TELEGRAM_API_ID, settings.TELEGRAM_API_HASH)
 
     message_buffer = asyncio.Queue(maxsize=MAX_BUFFER_SIZE)
@@ -43,7 +44,8 @@ async def run_userbot():
                 break
             except Exception as e:
                 logger.error(
-                    f"Не удалось инициализировать Kafka producer: {e}. Повторная попытка через {RECONNECT_INTERVAL} секунд."
+                    f"Не удалось инициализировать Kafka producer: {e}. "
+                    f"Повторная попытка через {RECONNECT_INTERVAL} секунд."
                 )
                 await asyncio.sleep(RECONNECT_INTERVAL)
 
@@ -63,7 +65,7 @@ async def run_userbot():
                 logger.info("Сообщение успешно отправлено в Kafka.")
                 message_buffer.task_done()
             except Exception as e:
-                logger.error(f"Ошибка при отправке сообщения в Kafka: {e}.")
+                logger.error(f"Ошибка при отправке сообщения в Kafka: {e}")
                 # Попробуем переоткрыть producer
                 kafka_producer = None
                 await asyncio.sleep(RECONNECT_INTERVAL)
@@ -79,7 +81,8 @@ async def run_userbot():
                 break
             except Exception as e:
                 logger.error(
-                    f"Не удалось инициализировать Kafka consumer: {e}. Повторная попытка через {RECONNECT_INTERVAL} секунд."
+                    f"Не удалось инициализировать Kafka consumer: {e}. "
+                    f"Повторная попытка через {RECONNECT_INTERVAL} секунд."
                 )
                 await asyncio.sleep(RECONNECT_INTERVAL)
 
@@ -106,7 +109,8 @@ async def run_userbot():
                         logger.exception(f"Ошибка при обработке инструкции: {e}")
             except Exception as e:
                 logger.error(
-                    f"Ошибка в Kafka consumer: {e}. Попытка переподключиться через {RECONNECT_INTERVAL} секунд."
+                    f"Ошибка в Kafka consumer: {e}. "
+                    f"Попытка переподключиться через {RECONNECT_INTERVAL} секунд."
                 )
                 kafka_consumer = None
                 await asyncio.sleep(RECONNECT_INTERVAL)
@@ -123,6 +127,7 @@ async def run_userbot():
         try:
             loop.add_signal_handler(s, shutdown_signal_handler, s, None)
         except NotImplementedError:
+            # Для Windows / внутри WSL могут быть нюансы
             pass
 
     async def handle_instruction(instruction):
@@ -137,9 +142,11 @@ async def run_userbot():
         else:
             logger.warning(f"Неизвестная инструкция: {action}")
 
+    # Счётчик сообщений (пример состояния)
     counter = MessageCounter(client)
 
     try:
+        # Запускаем телеграм-клиент
         await client.start()
         if not await client.is_user_authorized():
             logger.error("Telegram клиент не авторизован. Проверьте session_name.session.")
@@ -149,18 +156,18 @@ async def run_userbot():
         me = await client.get_me()
         logger.info(f"Userbot запущен как: @{me.username} (ID: {me.id})")
 
-        # Регистрируем единый обработчик
+        # Регистрируем единый обработчик для всех входящих
         register_unified_handler(client, message_buffer, counter, userbot_active)
 
-        # Запускаем задачи
+        # Создаём задачи: продьюсер, консумер (по необходимости) и сам Telethon
         producer = asyncio.create_task(producer_task())
         # consumer = asyncio.create_task(consumer_task())  # Если нужна логика инструкций
 
-        # client.run_until_disconnected() блокирует, поэтому собираем в gather
+        # Запускаем всё вместе
         await asyncio.gather(
             client.run_until_disconnected(),
             producer,
-           # consumer,
+            # consumer,
             shutdown_event.wait()
         )
 

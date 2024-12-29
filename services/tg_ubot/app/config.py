@@ -1,9 +1,9 @@
 from pydantic import BaseSettings
 from typing import List
-import os
 
 class Settings(BaseSettings):
-    # Список целевых чатов и каналов из .env, как JSON массив
+    # Список целевых чатов и каналов (как JSON-массив),
+    # Docker Compose заполнит TELEGRAM_TARGET_IDS в окружении.
     TELEGRAM_TARGET_IDS: List[int]
 
     TELEGRAM_API_ID: int
@@ -36,10 +36,5 @@ class Settings(BaseSettings):
     CHANNEL_DELAY_MAX_DAY: float = 10.0
     CHANNEL_DELAY_MIN_NIGHT: float = 10.0
     CHANNEL_DELAY_MAX_NIGHT: float = 20.0
-
-    class Config:
-        # Указываем абсолютный путь к .env файлу
-        env_file = "/home/dev/app/env/.env"
-        env_file_encoding = 'utf-8'
 
 settings = Settings()

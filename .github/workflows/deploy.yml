@@ -123,13 +123,13 @@ jobs:
         run: |
           ssh dev@${{ secrets.SSH_HOST }} "mkdir -p /home/dev/app/env"
           ssh dev@${{ secrets.SSH_HOST }} "cat <<EOF > /home/dev/app/env/.env
-TELEGRAM_API_ID=${{ secrets.TELEGRAM_API_ID }}
-TELEGRAM_API_HASH=${{ secrets.TELEGRAM_API_HASH }}
-TELEGRAM_PHONE=${{ secrets.TELEGRAM_PHONE }}
-TELEGRAM_TARGET_IDS=${{ secrets.TELEGRAM_TARGET_IDS }}
-TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
-KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-EOF"
+          TELEGRAM_API_ID=${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH=${{ secrets.TELEGRAM_API_HASH }}
+          TELEGRAM_PHONE=${{ secrets.TELEGRAM_PHONE }}
+          TELEGRAM_TARGET_IDS=${{ secrets.TELEGRAM_TARGET_IDS }}
+          TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
+          KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+          EOF"
 
       # Шаг 13: Деплой изменённых микросервисов или полный деплой
       - name: Deploy services

@@ -130,6 +130,10 @@ jobs:
           TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
           KAFKA_BOOTSTRAP_SERVERS=kafka:9092
           EOF"
+      # Шаг 12.1 проверка секретов
+      - name: Verify .env file on server
+        run: |
+          ssh dev@${{ secrets.SSH_HOST }} "grep TELEGRAM_TARGET_IDS /home/dev/app/env/.env && echo 'Проверка завершена.'"
 
       # Шаг 13: Деплой изменённых микросервисов или полный деплой
       - name: Deploy services

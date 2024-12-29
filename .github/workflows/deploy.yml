@@ -38,14 +38,14 @@ jobs:
           # Проверяем, изменены ли docker-compose.yml или deploy.yml
           CHANGED_DOCKER_COMPOSE=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} -- docker-compose.yml | wc -l)
           CHANGED_DEPLOY_YML=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} -- .github/workflows/deploy.yml | wc -l)
-
+          
           # Устанавливаем переменные окружения для полного деплоя или изменения docker-compose.yml
           if [ "$CHANGED_DEPLOY_YML" -gt 0 ]; then
             echo "FULL_DEPLOY=true" >> $GITHUB_ENV
           elif [ "$CHANGED_DOCKER_COMPOSE" -gt 0 ]; then
             echo "DOCKER_COMPOSE_CHANGED=true" >> $GITHUB_ENV
           fi
-
+          
           # Дополнительный вывод для отладки
           echo "CHANGED_DOCKER_COMPOSE=$CHANGED_DOCKER_COMPOSE"
           echo "CHANGED_DEPLOY_YML=$CHANGED_DEPLOY_YML"
@@ -123,13 +123,13 @@ jobs:
         run: |
           ssh dev@${{ secrets.SSH_HOST }} "mkdir -p /home/dev/app/env"
           ssh dev@${{ secrets.SSH_HOST }} "cat <<EOF > /home/dev/app/env/.env
-          TELEGRAM_API_ID=${{ secrets.TELEGRAM_API_ID }}
-          TELEGRAM_API_HASH=${{ secrets.TELEGRAM_API_HASH }}
-          TELEGRAM_PHONE=${{ secrets.TELEGRAM_PHONE }}
-          TELEGRAM_TARGET_IDS=${{ secrets.TELEGRAM_TARGET_IDS }}
-          TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
-          KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-          EOF"
+TELEGRAM_API_ID=${{ secrets.TELEGRAM_API_ID }}
+TELEGRAM_API_HASH=${{ secrets.TELEGRAM_API_HASH }}
+TELEGRAM_PHONE=${{ secrets.TELEGRAM_PHONE }}
+TELEGRAM_TARGET_IDS=${{ secrets.TELEGRAM_TARGET_IDS }}
+TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
+KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+EOF"
 
       # Шаг 13: Деплой изменённых микросервисов или полный деплой
       - name: Deploy services
@@ -161,7 +161,7 @@ jobs:
               rsync -avz --exclude '.git' --exclude '.github' services/$service/ dev@${{ secrets.SSH_HOST }}:/home/dev/app/services/$service/
             done
             # После копирования всех изменённых сервисов — поднимаем их
-            ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose up -d --build --force-recreate $SERVICES"
+            ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose up -d --build --remove-orphans --force-recreate $SERVICES"
           fi
 
       # Шаг 14: Проверка статуса Docker Compose
@@ -189,6 +189,30 @@ jobs:
           ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose up -d kafka"
 
       # Шаг 17: Проверка состояния Kafka
+      - name: Wait for Kafka to be healthy
+        run: |
+          # Запускаем Kafka (если ещё не запущен)
+          ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose up -d kafka"
+          
+          # Ждём максимум ~2 минуты (24 раза по 5 секунд)
+          for i in {1..24}; do
+            # Забираем JSON о контейнерах
+            status=$(ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose ps --format json" \
+              | jq -r '.[] | select(.Service == "kafka") | .Health')
+            
+            if [ "$status" = "healthy" ]; then
+              echo "Kafka is healthy now"
+              exit 0
+            fi
+            echo "Kafka not healthy yet. Waiting..."
+            sleep 5
+          done
+          echo "Timed out waiting for Kafka to become healthy"
+          exit 1
+
+      # Шаг 18: Проверка здоровья Kafka
       - name: Check Kafka Health
         run: |
-          ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose exec kafka bash -c 'echo ruok | nc localhost 2181 && echo \"Kafka is healthy\" || echo \"Kafka is not healthy\"'"
+          # Дополнительная проверка: если команда выдала ошибку - сломаем пайплайн
+          ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose exec kafka kafka-broker-api-versions --bootstrap-server localhost:9092"
+          echo "Kafka is alive and responding"

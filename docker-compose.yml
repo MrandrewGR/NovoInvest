@@ -60,6 +60,7 @@ services:
 
   # Пример tg_ubot
   tg_ubot:
+    container_name: tg_ubot
     build:
       context: ./services/tg_ubot
     env_file:
@@ -73,6 +74,7 @@ services:
 
   # Новый сервис для консюмера - название "db"
   db:
+    container_name: db
     build:
       context: ./services/db
     env_file:

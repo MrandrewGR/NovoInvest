@@ -1,17 +1,22 @@
-# File location: ./services/file_processor/Dockerfile
+# File location: ./services/tg_file_bot/Dockerfile
 FROM python:3.11-slim
 
+# Установите рабочую директорию
 WORKDIR /app
 
-# Скопируем requirements.txt и установим зависимости
+# Установите netcat для работы wait-for-it.sh
+RUN apt-get update && apt-get install -y netcat && rm -rf /var/lib/apt/lists/*
+
+# Скопируйте wait-for-it.sh и сделайте его исполняемым
+COPY wait-for-it.sh /usr/local/bin/wait-for-it.sh
+RUN chmod +x /usr/local/bin/wait-for-it.sh
+
+# Скопируйте requirements.txt и установите зависимости
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Скопируем код приложения
-COPY . .
+# Скопируйте код приложения
+COPY app/ ./app
 
-# Разрешим выполнение скрипта ожидания
-RUN chmod +x wait-for-services.sh
-
-# Запускаем сначала wait-for-services.sh, затем Python
-CMD ["./wait-for-services.sh", "python", "-m", "app.main"]
+# Определите команду запуска с использованием wait-for-it.sh
+CMD ["wait-for-it.sh", "kafka:9092", "--timeout=60", "--strict", "--", "python", "-m", "app.main"]

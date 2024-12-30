@@ -39,7 +39,7 @@ def main():
     db_port = os.environ.get("DB_PORT", "5432")
     db_user = os.environ.get("DB_USER", "postgres")
     db_password = os.environ.get("DB_PASSWORD", "postgres")
-    db_name = os.environ.get("DB_NAME", "data_processor_db")
+    db_name = os.environ.get("DB_NAME", "tg_ubot")
 
     # Подключаемся к PostgreSQL
     conn = psycopg2.connect(

@@ -89,6 +89,21 @@ services:
     networks:
       - app_app_network
 
+  bot:
+    container_name: bot
+    build:
+      context: ./services/bot
+    env_file:
+      - /home/dev/app/env/bot.env
+    restart: unless-stopped
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - app_app_network
+    volumes:
+      - bot_volume:/app/files  # Общий том для файлов
+
 networks:
   app_app_network:
     driver: bridge
@@ -101,5 +116,7 @@ volumes:
   zookeeper_log:
     driver: local
   pgdata:
+    driver: local
+  bot_volume:
     driver: local
 

@@ -6,44 +6,12 @@
 │   └── requirements.txt
 ├── services
 │   ├── __init__.py
-│   ├── data_processor
+│   ├── db
 │   │   ├── Dockerfile
 │   │   ├── __init__.py
-│   │   ├── alembic.ini
-│   │   ├── app
-│   │   │   ├── __init__.py
-│   │   │   ├── __pycache__
-│   │   │   ├── config.py
-│   │   │   ├── consumer.py
-│   │   │   ├── database.py
-│   │   │   ├── logging_config.py
-│   │   │   ├── models.py
-│   │   │   └── utils.py
-│   │   ├── logs
-│   │   ├── migrations
-│   │   │   ├── README
-│   │   │   ├── __init__.py
-│   │   │   ├── __pycache__
-│   │   │   ├── env.py
-│   │   │   ├── script.py.mako
-│   │   │   └── versions
-│   │   │       ├── 20241225_initial_migration.py
-│   │   │       └── migrations
-│   │   │           └── versions
+│   │   ├── main.py
 │   │   ├── requirements.txt
 │   │   └── wait-for-services.sh
-│   ├── tg_standard_bot
-│   │   ├── Dockerfile
-│   │   ├── app
-│   │   │   ├── __init__.py
-│   │   │   ├── config.py
-│   │   │   ├── handlers.py
-│   │   │   ├── instructions
-│   │   │   │   └── __init__.py
-│   │   │   ├── kafka_producer.py
-│   │   │   ├── logger.py
-│   │   │   └── main.py
-│   │   └── requirements.txt
 │   └── tg_ubot
 │       ├── Dockerfile
 │       ├── app

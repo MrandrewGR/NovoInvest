@@ -102,7 +102,7 @@ jobs:
       # Шаг 12.00: заполнение bot.env
       - name: Create or Update bot .env file on server
         run: |
-          ssh dev@${{ secrets.SSH_HOST }} "echo TELEGRAM_API_ID=${{ secrets.TELEGRAM_BOT_TOKEN }} >> /home/dev/app/env/bot.env"
+          ssh dev@${{ secrets.SSH_HOST }} "echo TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }} >> /home/dev/app/env/bot.env"
 
       # Шаг 12.1: Проверка содержимого .env файла
       - name: Verify .env file on server

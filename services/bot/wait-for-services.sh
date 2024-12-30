@@ -1,5 +1,5 @@
 # Перейдите в директорию бота
-cd ./services/tg_file_bot
+cd ./services/bot
 
 # Скачайте wait-for-it.sh
 curl -o wait-for-it.sh https://raw.githubusercontent.com/vishnubob/wait-for-it/master/wait-for-it.sh

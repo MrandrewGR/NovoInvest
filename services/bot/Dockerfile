@@ -1,22 +1,23 @@
-# File location: ./services/tg_file_bot/Dockerfile
+# File: ./services/tg_file_bot/Dockerfile
+
 FROM python:3.11-slim
 
-# Установите рабочую директорию
+# Set working directory
 WORKDIR /app
 
-# Установите netcat для работы wait-for-it.sh
-RUN apt-get update && apt-get install -y netcat && rm -rf /var/lib/apt/lists/*
+# Install netcat and curl
+RUN apt-get update && apt-get install -y netcat curl && rm -rf /var/lib/apt/lists/*
 
-# Скопируйте wait-for-it.sh и сделайте его исполняемым
-COPY wait-for-it.sh /usr/local/bin/wait-for-it.sh
-RUN chmod +x /usr/local/bin/wait-for-it.sh
+# Download wait-for-it.sh and make it executable
+RUN curl -o /usr/local/bin/wait-for-it.sh https://raw.githubusercontent.com/vishnubob/wait-for-it/master/wait-for-it.sh && \
+    chmod +x /usr/local/bin/wait-for-it.sh
 
-# Скопируйте requirements.txt и установите зависимости
+# Copy requirements and install dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Скопируйте код приложения
+# Copy application code
 COPY app/ ./app
 
-# Определите команду запуска с использованием wait-for-it.sh
+# Define the startup command
 CMD ["wait-for-it.sh", "kafka:9092", "--timeout=60", "--strict", "--", "python", "-m", "app.main"]

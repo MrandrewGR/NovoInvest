@@ -13,7 +13,7 @@ import logging
 from kafka import KafkaProducer
 import json
 
-from app.config import TELEGRAM_BOT_TOKEN, KAFKA_BOOTSTRAP_SERVERS, KAFKA_TOPIC
+from app.config import TELEGRAM_BOT_TOKEN, KAFKA_BOOTSTRAP_SERVERS, KAFKA_TOPIC, ALLOWED_USER_IDS
 from app.logger import logger
 
 
@@ -25,8 +25,14 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Обработчик входящих файлов.
-    Проверяем, что файл — xml (простая проверка по mime-type или по расширению).
+    Проверяем, что файл — xml и пользователь находится в вайтлисте.
     """
+    user_id = update.effective_user.id
+    if str(user_id) not in ALLOWED_USER_IDS:
+        logger.warning(f"Пользователь с ID {user_id} попытался отправить файл без разрешения.")
+        await update.message.reply_text("У вас нет разрешения отправлять файлы этому боту.")
+        return
+
     if not update.message.document:
         return
 

@@ -1,25 +1,24 @@
-# File: ./services/tg_file_bot/Dockerfile
-
+# File location: ./services/bot/Dockerfile
 FROM python:3.11-slim
 
-# Set the working directory
+# Установите рабочую директорию
 WORKDIR /app
 
-# Install netcat-openbsd and curl
+# Установите netcat и curl для работы скрипта ожидания
 RUN apt-get update && \
     apt-get install -y netcat-openbsd curl && \
     rm -rf /var/lib/apt/lists/*
 
-# Copy wait-for-it.sh and make it executable
-COPY wait-for-it.sh /usr/local/bin/wait-for-it.sh
-RUN chmod +x /usr/local/bin/wait-for-it.sh
+# Скопируйте ваш собственный скрипт ожидания и сделайте его исполняемым
+COPY wait-for-services.sh /usr/local/bin/wait-for-services.sh
+RUN chmod +x /usr/local/bin/wait-for-services.sh
 
-# Copy requirements.txt and install dependencies
+# Скопируйте requirements.txt и установите зависимости
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
+# Скопируйте код приложения
 COPY app/ ./app
 
-# Define the startup command using wait-for-it.sh
-CMD ["wait-for-it.sh", "kafka:9092", "--timeout=60", "--strict", "--", "python", "-m", "app.main"]
+# Определите команду запуска с использованием вашего скрипта ожидания
+CMD ["wait-for-services.sh", "python", "-m", "app.main"]

@@ -1,0 +1,4 @@
+# File location: ./services/xml_worker/requirements.txt
+
+kafka-python==2.0.2
+pandas==2.0.3

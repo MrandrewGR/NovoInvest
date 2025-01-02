@@ -1,3 +1,4 @@
+# File location: ./.github/workflows/deploy.yml
 name: Deploy to Hetzner
 
 on:
@@ -107,7 +108,7 @@ jobs:
       # Шаг 12.1: Проверка содержимого .env файла
       - name: Verify .env file on server
         run: |
-          ssh dev@${{ secrets.SSH_HOST }} "grep TELEGRAM_TARGET_IDS /home/dev/app/env/.env && echo 'Проверка завершена.'"          
+          ssh dev@${{ secrets.SSH_HOST }} "grep TELEGRAM_TARGET_IDS /home/dev/app/env/.env && echo 'Проверка завершена.'"
 
       # deploy session_tg
       - name: Decode and upload Telethon session
@@ -254,3 +255,10 @@ jobs:
           # Дополнительная проверка: если команда выдала ошибку - сломаем пайплайн
           ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose exec kafka kafka-broker-api-versions --bootstrap-server localhost:9092"
           echo "Kafka is alive and responding"
+
+      # --- ДОБАВЛЯЕМ ШАГ ОЧИСТКИ НЕИСПОЛЬЗУЕМЫХ ТОМОВ ---
+      - name: Remove unused Docker volumes
+        run: |
+          # Удаляем все неиспользуемые тома (включая анонимные).
+          # Если какие-то тома сейчас используются контейнерами — они не будут удалены.
+          ssh dev@${{ secrets.SSH_HOST }} "docker volume prune -f"

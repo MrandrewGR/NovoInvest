@@ -1,4 +1,5 @@
 # File location: ./docker-compose.yml
+
 version: '3.8'
 services:
   zookeeper:
@@ -42,7 +43,6 @@ services:
       timeout: 10s
       retries: 10
 
-  # PostgreSQL
   postgres:
     image: postgres:15-alpine
     container_name: postgres
@@ -58,7 +58,6 @@ services:
       - ./services/db/init-db:/docker-entrypoint-initdb.d
     networks:
       - app_app_network
-
 
   tg_ubot:
     container_name: tg_ubot
@@ -81,7 +80,6 @@ services:
     container_name: db
     build:
       context: ./services/db
-    # Здесь пусть остаётся, если удобно
     env_file:
       - ./env/.env
     environment:
@@ -97,7 +95,6 @@ services:
     networks:
       - app_app_network
 
-
   bot:
     container_name: bot
     build:
@@ -111,21 +108,45 @@ services:
     networks:
       - app_app_network
     volumes:
-      - bot_volume:/app/files  # Общий том для файлов
+      - bot_volume:/app/files
+
+
+  xml_worker:
+    container_name: xml_worker
+    build:
+      context: ./services/xml_worker
+    # Можно также указать env_file для доп. переменных, если надо
+    # env_file:
+    #   - /home/dev/app/env/xml_worker.env
+    depends_on:
+      kafka:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - app_app_network
+    volumes:
+      - xml_worker_volume:/app/files  # если надо хранить/читать файлы
 
 networks:
   app_app_network:
     driver: bridge
 
 volumes:
-  kafka_data:
-    driver: local
   zookeeper_data:
     driver: local
+    external: false
   zookeeper_log:
     driver: local
+    external: false
+  kafka_data:
+    driver: local
+    external: false
   pgdata:
     driver: local
+    external: false
   bot_volume:
     driver: local
-
+    external: false
+  xml_worker_volume:
+    driver: local
+    external: false

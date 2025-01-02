@@ -5,32 +5,45 @@
 ├── requirements
 │   └── requirements.txt
 ├── services
-│   ├── __init__.py
+│   ├── bot
+│   │   ├── Dockerfile
+│   │   ├── app
+│   │   │   ├── __init__.py
+│   │   │   ├── config.py
+│   │   │   ├── logger.py
+│   │   │   └── main.py
+│   │   ├── requirements.txt
+│   │   └── wait-for-services.sh
 │   ├── db
 │   │   ├── Dockerfile
 │   │   ├── __init__.py
+│   │   ├── init-db
+│   │   │   └── init.sql
 │   │   ├── main.py
 │   │   ├── requirements.txt
 │   │   └── wait-for-services.sh
-│   └── tg_ubot
-│       ├── Dockerfile
-│       ├── app
-│       │   ├── README.md
-│       │   ├── __init__.py
-│       │   ├── config.py
-│       │   ├── handlers
-│       │   │   ├── __init__.py
-│       │   │   └── unified_handler.py
-│       │   ├── kafka_consumer.py
-│       │   ├── kafka_producer.py
-│       │   ├── logger.py
-│       │   ├── main.py
-│       │   ├── send_test_message.py
-│       │   ├── state.py
-│       │   └── utils.py
-│       ├── media
-│       ├── requirements.txt
-│       └── wait-for-it.sh
+│   ├── tg_ubot
+│   │   ├── Dockerfile
+│   │   ├── app
+│   │   │   ├── README.md
+│   │   │   ├── __init__.py
+│   │   │   ├── config.py
+│   │   │   ├── handlers
+│   │   │   │   ├── __init__.py
+│   │   │   │   └── unified_handler.py
+│   │   │   ├── kafka_consumer.py
+│   │   │   ├── kafka_producer.py
+│   │   │   ├── logger.py
+│   │   │   ├── main.py
+│   │   │   ├── send_test_message.py
+│   │   │   ├── state.py
+│   │   │   └── utils.py
+│   │   ├── media
+│   │   ├── requirements.txt
+│   │   └── wait-for-it.sh
+│   └── xml_worker
+│       └── app
+│           └── __init__.py
 ├── tree_structure.txt
 └── utils
     ├── get structure.py

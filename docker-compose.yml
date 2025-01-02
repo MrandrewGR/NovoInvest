@@ -81,14 +81,22 @@ services:
     container_name: db
     build:
       context: ./services/db
+    # Здесь пусть остаётся, если удобно
     env_file:
-      - ./env/.env  # должно содержать KAFKA_UBOT_OUTPUT_TOPIC, DB_HOST=postgres и т.п.
+      - ./env/.env
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: tg_ubot
     depends_on:
       - kafka
       - postgres
     restart: unless-stopped
     networks:
       - app_app_network
+
 
   bot:
     container_name: bot

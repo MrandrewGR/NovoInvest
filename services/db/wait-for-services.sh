@@ -9,7 +9,7 @@ wait_for_service() {
   echo "Waiting for $host:$port..."
   while ! nc -z "$host" "$port"; do
     echo "$host is unavailable - sleeping"
-    sleep 1
+    sleep 4
   done
   echo "$host is up - continuing"
 }

@@ -111,7 +111,7 @@ def consume_results_from_kafka(application):
     """
     Запускается в отдельном потоке — слушаем топик KAFKA_RESULT_TOPIC.
     Когда приходят данные об обработке (isin_in_portfolio),
-    находим нужного пользователя и отправляем ему сообщение через event loop бота.
+    находим нужного пользователя и отправляем ему сообщение через event loop приложения.
     """
     consumer = KafkaConsumer(
         KAFKA_RESULT_TOPIC,
@@ -147,6 +147,7 @@ def consume_results_from_kafka(application):
             logger.warning(f"Не найден chat_id для user_id={user_id}. Возможно, бот был перезапущен.")
             continue
 
+        # Формируем текст для отправки
         if not result:
             text_msg = "Обработчик не вернул позиций по сделкам, видимо, пустой отчёт."
         else:
@@ -166,8 +167,10 @@ def consume_results_from_kafka(application):
             except Exception as e:
                 logger.exception(f"Ошибка при отправке сообщения пользователю {user_id}: {e}")
 
-        # Запускаем корутину с использованием application.create_task
-        application.create_task(send_result())
+        # Берём event loop из application (v20+)
+        loop = application.asyncio_loop
+        # Запускаем корутину в event loop (а не create_task из другого потока)
+        asyncio.run_coroutine_threadsafe(send_result(), loop)
 
 
 def main():

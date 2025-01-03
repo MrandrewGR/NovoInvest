@@ -1,4 +1,8 @@
 # File location: ./services/xml_worker/requirements.txt
+#
+# Если вы используете строгие версии numpy/pandas, укажите их здесь.
+# Например, ниже — пример совместимых версий.
 
 kafka-python==2.0.2
+numpy==1.23.5
 pandas==2.0.3

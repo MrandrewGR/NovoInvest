@@ -166,10 +166,8 @@ def consume_results_from_kafka(application):
             except Exception as e:
                 logger.exception(f"Ошибка при отправке сообщения пользователю {user_id}: {e}")
 
-        # Запускаем корутину в event loop приложения
-        # В PTB v20+ event loop доступен через application.asyncio_loop
-        loop = application.asyncio_loop
-        asyncio.run_coroutine_threadsafe(send_result(), loop)
+        # Запускаем корутину с использованием application.create_task
+        application.create_task(send_result())
 
 
 def main():

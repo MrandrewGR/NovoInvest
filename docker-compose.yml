@@ -108,14 +108,12 @@ services:
     networks:
       - app_app_network
     volumes:
-      - bot_volume:/app/files
-
+      - shared_files:/app/files  # общий том
 
   xml_worker:
     container_name: xml_worker
     build:
       context: ./services/xml_worker
-    # Можно также указать env_file для доп. переменных, если надо
     # env_file:
     #   - /home/dev/app/env/xml_worker.env
     depends_on:
@@ -125,7 +123,7 @@ services:
     networks:
       - app_app_network
     volumes:
-      - xml_worker_volume:/app/files  # если надо хранить/читать файлы
+      - shared_files:/app/files  # тот же том и та же директория
 
 networks:
   app_app_network:
@@ -144,9 +142,8 @@ volumes:
   pgdata:
     driver: local
     external: false
-  bot_volume:
-    driver: local
-    external: false
-  xml_worker_volume:
+
+  # Удаляем bot_volume и xml_worker_volume, вместо них используем shared_files
+  shared_files:
     driver: local
     external: false

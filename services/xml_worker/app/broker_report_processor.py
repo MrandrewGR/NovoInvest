@@ -16,6 +16,7 @@ class BrokerReportParser:
     def __init__(self, xml_file: str):
         self.xml_file = xml_file
         self.root = self._parse_xml()
+        self._strip_namespaces(self.root)  # <-- Новый вызов для удаления namespace
         self.date_start = None
         self.date_end = None
         self._extract_report_dates()
@@ -27,6 +28,15 @@ class BrokerReportParser:
         except ET.ParseError as e:
             logger.error(f"Ошибка парсинга XML файла: {e}")
             raise
+
+    def _strip_namespaces(self, elem):
+        """
+        Рекурсивно удаляет все пространства имён из tag,
+        чтобы .findall() работал по простым именам (Positions, Report и т.д.).
+        """
+        for el in elem.iter():
+            if '}' in el.tag:
+                el.tag = el.tag.split('}', 1)[1]
 
     def _extract_report_dates(self):
         """
@@ -61,12 +71,8 @@ class BrokerReportParser:
         для тех, у кого quantity (берём из `real_rest`) > 0.
         """
         positions = []
-        # Ищем все узлы <Details>, которые лежат внутри <Positions> / <Report Name="1_Positions">.
-        # Пример XPath: .//Positions//Report[@Name="1_Positions"]//Details
-        # Но у вас они лежат в <Tablix1> -> <active_type_Collection> -> ...
-        # Поэтому уточним более специфичный путь:
         details_xpath = './/Positions//Report[@Name="1_Positions"]//Details_Collection//Details'
-        details_nodes = self.root.findall(details_xpath, self.root.nsmap if hasattr(self.root, 'nsmap') else {})
+        details_nodes = self.root.findall(details_xpath)
 
         if not details_nodes:
             logger.warning("Не найдены узлы <Details> с позициями в разделе 'Positions'.")
@@ -75,7 +81,7 @@ class BrokerReportParser:
         for det in details_nodes:
             try:
                 real_rest_str = det.get('real_rest', '0')
-                real_rest = float(real_rest_str.replace(',', '.'))  # На случай, если в XML запятая
+                real_rest = float(real_rest_str.replace(',', '.'))  # На случай, если в XML может быть запятая
                 if real_rest > 0:
                     isin = det.get('ISIN1', '').strip()
                     name = det.get('active_name', '').strip()
@@ -86,11 +92,5 @@ class BrokerReportParser:
                     })
             except Exception as e:
                 logger.exception(f"Ошибка при парсинге элемента <Details>: {e}")
+
         return positions
-
-
-#
-# Если вам не нужна логика parse_trades() и PositionCalculator, можно удалить ниже.
-# Если всё-таки нужна — можно оставить, но мы заменяем главный метод на parse_positions_in_period().
-#
-

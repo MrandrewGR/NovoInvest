@@ -57,7 +57,6 @@ class BrokerReportParser:
         return all_trades
 
     def _get_field_mapping(self):
-        # Поля, которые нас интересуют в XML
         return {
             'db_time': 'datetime',
             'settlement_time': 'settlement_date',
@@ -71,7 +70,6 @@ class BrokerReportParser:
         trades = []
         for trade in self.root.findall(section):
             try:
-                # Пропускаем сделки РЕПО
                 if self._is_repo_trade(trade):
                     continue
                 trade_data = self._parse_trade_data(trade, field_mapping)
@@ -88,9 +86,6 @@ class BrokerReportParser:
         return False
 
     def _parse_trade_data(self, trade, field_mapping):
-        """
-        Преобразуем XML-данные в словарь, используя field_mapping.
-        """
         trade_data = {}
         for xml_field, model_field in field_mapping.items():
             value = trade.findtext(xml_field, default=None)
@@ -102,7 +97,6 @@ class BrokerReportParser:
             return None
 
         if field_name in ['datetime', 'settlement_date']:
-            # Формат даты в XML (пример: 2023-08-01T10:15:00)
             for fmt in ('%Y-%m-%dT%H:%M:%S', '%d.%m.%Y %H:%M:%S'):
                 try:
                     return datetime.strptime(value, fmt)
@@ -120,61 +114,48 @@ class BrokerReportParser:
 
 class PositionCalculator:
     """
-    Класс для расчёта позиций (количество бумаг, средняя цена покупки) по датам расчётов
-    на основе списка сделок (trades).
+    Упрощённый расчёт: формируем одну итоговую (совокупную) позицию.
+    Если нужно покрасивее (с датами), нужно дополнительно усложнять логику.
     """
     def __init__(self, trades):
-        # trades — это список словарей, каждый словарь описывает сделку
         self.trades = trades
 
     def calculate_positions(self) -> pd.DataFrame:
-        """
-        Рассчитывает сводную таблицу позиций (ISIN, количество бумаг, средняя цена).
-        """
         if not self.trades:
             logger.warning("Нет сделок для расчёта позиций.")
             return pd.DataFrame()
 
         trades_df = pd.DataFrame(self.trades)
-        # Приводим settlement_date к дате (без времени), если есть
-        if 'settlement_date' in trades_df.columns and trades_df['settlement_date'].notnull().any():
-            trades_df['settlement_date'] = trades_df['settlement_date'].dt.date
-        else:
-            # Если settlement_date нет или None, ставим текущую дату,
-            # чтобы хоть как-то рассчитать (или можно пропустить)
-            trades_df['settlement_date'] = pd.to_datetime('today').date()
+        # Для безопасности
+        if 'settlement_date' not in trades_df:
+            trades_df['settlement_date'] = pd.to_datetime('today')
 
-        # Сортируем по дате расчёта и дате сделки
+        # Сортируем
         trades_df.sort_values(by=['settlement_date', 'datetime'], inplace=True)
         trades_df.reset_index(drop=True, inplace=True)
 
-        # Для упрощения возьмём максимальную settlement_date (одна итоговая позиция)
-        # или можно реализовать "по каждой дате" — как в предыдущем коде
-        # но раз БД нет, проще сразу посчитать совокупную позицию.
-
         positions = {}
         for _, row in trades_df.iterrows():
-            self._process_single_trade(positions, row)
+            self._update_position(positions, row)
 
-        # Превращаем в DataFrame
-        result = []
+        results = []
         for isin, pos in positions.items():
             if pos['qty'] != 0:
-                result.append({
+                results.append({
                     'ISIN': isin,
                     'количество бумаг': pos['qty'],
                     'средняя цена покупки': round(pos['avg_price'], 2) if pos['avg_price'] else None,
                 })
 
-        return pd.DataFrame(result)
+        return pd.DataFrame(results)
 
-    def _process_single_trade(self, positions: dict, row: pd.Series):
+    def _update_position(self, positions: dict, row):
         isin = row.get('isin')
-        price = row.get('price', 0.0)
-        qty = row.get('qty', 0.0)
-
         if not isin:
             return
+
+        price = row.get('price', 0.0)
+        qty = row.get('qty', 0.0)
 
         if isin not in positions:
             positions[isin] = {'qty': 0.0, 'total_cost': 0.0, 'avg_price': None}
@@ -185,12 +166,11 @@ class PositionCalculator:
             pos['qty'] += qty
             pos['total_cost'] += qty * price
         elif qty < 0:  # продажа
-            # qty отрицательное, считаем по средневзвешенной (либо price)
-            avg_price = pos['avg_price'] if pos['avg_price'] is not None else price
+            avg_price = pos['avg_price'] if pos['avg_price'] else price
             pos['total_cost'] += qty * avg_price
             pos['qty'] += qty
 
-        # обновляем avg_price
+        # пересчёт средней
         if pos['qty'] != 0:
             pos['avg_price'] = pos['total_cost'] / pos['qty']
         else:

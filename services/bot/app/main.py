@@ -1,5 +1,10 @@
-# File location: ./services/tg_file_bot/app/main.py
+# File location: ./services/bot/app/main.py
+
 import os
+import time
+import json
+import threading
+
 from telegram import Update
 from telegram.ext import (
     ApplicationBuilder,
@@ -8,26 +13,45 @@ from telegram.ext import (
     filters,
     ContextTypes
 )
-import mimetypes
+from kafka import KafkaProducer, KafkaConsumer
 import logging
-from kafka import KafkaProducer
-import json
 
-from app.config import TELEGRAM_BOT_TOKEN, KAFKA_BOOTSTRAP_SERVERS, KAFKA_TOPIC, ALLOWED_USER_IDS
+from app.config import (
+    TELEGRAM_BOT_TOKEN,
+    KAFKA_BOOTSTRAP_SERVERS,
+    KAFKA_TOPIC,
+    KAFKA_RESULT_TOPIC,
+    FILES_DIR,
+    ALLOWED_USER_IDS
+)
 from app.logger import logger
+
+# Глобальное хранилище для объекта приложения Telegram
+telegram_app = None
+
+# Словарь для отслеживания, какой user_id какой chat_id имеет,
+# чтобы отправлять ответы правильному получателю.
+# Ключ: user_id, значение: chat_id
+USER_CHAT_MAP = {}
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Стартовая команда /start."""
-    await update.message.reply_text("Привет! Пришли мне XML-файл, и я передам его в другой сервис.")
+    user_id = update.effective_user.id
+    USER_CHAT_MAP[str(user_id)] = update.effective_chat.id
+    await update.message.reply_text("Привет! Пришли мне XML-файл, и я передам его на обработку.")
 
 
 async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Обработчик входящих файлов.
-    Проверяем, что файл — xml и пользователь находится в вайтлисте.
+    Проверяем, что файл — xml и пользователь есть в вайтлисте.
+    Переименовываем файл в user_id_timestamp.xml
     """
     user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+    USER_CHAT_MAP[str(user_id)] = chat_id
+
     if str(user_id) not in ALLOWED_USER_IDS:
         logger.warning(f"Пользователь с ID {user_id} попытался отправить файл без разрешения.")
         await update.message.reply_text("У вас нет разрешения отправлять файлы этому боту.")
@@ -38,7 +62,6 @@ async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     document = update.message.document
     file_name = document.file_name
-    file_mime_type = document.mime_type
 
     # Проверка, что файл имеет расширение .xml
     if not file_name.lower().endswith(".xml"):
@@ -46,10 +69,14 @@ async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     file_id = document.file_id
-    file_path_local = os.path.join("files", file_name)
+
+    # Переименовываем файл -> user_id_timestamp.xml
+    ts = int(time.time())
+    new_file_name = f"{user_id}_{ts}.xml"
+    file_path_local = os.path.join(FILES_DIR, new_file_name)
 
     # Создаем директорию для файлов, если её ещё нет
-    os.makedirs("files", exist_ok=True)
+    os.makedirs(FILES_DIR, exist_ok=True)
 
     try:
         # Скачиваем файл
@@ -68,36 +95,106 @@ async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
             value_serializer=lambda v: json.dumps(v).encode('utf-8')
         )
         message = {
-            "file_name": file_name,
+            "user_id": str(user_id),
             "file_path": file_path_local
         }
         producer.send(KAFKA_TOPIC, message)
         producer.flush()
-        logger.info(f"Отправлено сообщение в Kafka: {message}")
+        logger.info(f"Отправлено сообщение в Kafka (топик={KAFKA_TOPIC}): {message}")
     except Exception as e:
         logger.error(f"Ошибка при отправке сообщения в Kafka: {e}")
         await update.message.reply_text("Произошла ошибка при уведомлении сервиса обработки файлов.")
         return
 
     await update.message.reply_text(
-        f"Файл '{file_name}' получен и сохранён. Уведомление отправлено для обработки."
+        f"Файл '{file_name}' получен и сохранён как '{new_file_name}'. Отправил на обработку..."
     )
 
 
+def consume_results_from_kafka():
+    """
+    Запускается в отдельном потоке — слушаем топик KAFKA_RESULT_TOPIC.
+    Когда приходят данные об обработке (isin_in_portfolio),
+    находим нужного пользователя и отправляем ему сообщение.
+    """
+    consumer = KafkaConsumer(
+        KAFKA_RESULT_TOPIC,
+        bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
+        auto_offset_reset='earliest',
+        enable_auto_commit=True,
+        group_id='bot_consumer_group',
+        value_deserializer=lambda x: x.decode('utf-8')
+    )
+
+    logger.info(f"[bot] Consumer запущен, слушаем топик '{KAFKA_RESULT_TOPIC}'...")
+    for message in consumer:
+        msg_str = message.value
+        logger.info(f"[bot] Получено сообщение из Kafka (топик={KAFKA_RESULT_TOPIC}): {msg_str}")
+
+        try:
+            msg_json = json.loads(msg_str)
+        except json.JSONDecodeError:
+            logger.exception("Некорректный JSON в сообщении.")
+            continue
+
+        user_id = msg_json.get("user_id")
+        result = msg_json.get("result", [])
+
+        if not user_id:
+            logger.warning("Не указан user_id в результатах. Пропускаем.")
+            continue
+
+        # Пытаемся найти соответствующий chat_id
+        chat_id = USER_CHAT_MAP.get(str(user_id))
+        if not chat_id:
+            logger.warning(f"Не найден chat_id для user_id={user_id}. Возможно, бот был перезапущен.")
+            continue
+
+        # Формируем текст ответа
+        if not result:
+            text_msg = "Обработчик не вернул позиций по сделкам, видимо, пустой отчёт."
+        else:
+            lines = ["Результаты обработки XML:"]
+            for item in result:
+                isin = item.get("isin")
+                qty = item.get("quantity")
+                avgp = item.get("avg_price")
+                lines.append(f"- ISIN: {isin}, Кол-во: {qty}, Средняя цена: {avgp}")
+            text_msg = "\n".join(lines)
+
+        # Отправляем пользователю
+        try:
+            # Чтобы отправить сообщение, нужно асинхронно вызывать методы Telegram API.
+            # Но у нас отдельный поток, поэтому используем run_coroutine_threadsafe.
+            telegram_app.create_task(
+                telegram_app.bot.send_message(chat_id=chat_id, text=text_msg)
+            )
+            logger.info(f"Отправили результаты пользователю {user_id} (chat_id={chat_id}).")
+        except Exception as e:
+            logger.exception(f"Ошибка при отправке сообщения пользователю {user_id}: {e}")
+
+
 def main():
-    """Главная точка входа в приложение."""
+    """Главная точка входа в приложение (бот)."""
+    global telegram_app
+
     logger.info("Запуск Телеграм-бота для приёма XML-файлов...")
 
-    app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
+    # Создаём приложение Telegram
+    telegram_app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
 
     # Обработчики команд
-    app.add_handler(CommandHandler("start", start_command))
+    telegram_app.add_handler(CommandHandler("start", start_command))
 
     # Обработчик документов (files)
-    app.add_handler(MessageHandler(filters.Document.ALL, handle_file))
+    telegram_app.add_handler(MessageHandler(filters.Document.ALL, handle_file))
+
+    # Запускаем поток-потребитель Kafka (результаты обработки)
+    consumer_thread = threading.Thread(target=consume_results_from_kafka, daemon=True)
+    consumer_thread.start()
 
     logger.info("Бот запущен. Ожидаю сообщений...")
-    app.run_polling()
+    telegram_app.run_polling()
 
 
 if __name__ == "__main__":

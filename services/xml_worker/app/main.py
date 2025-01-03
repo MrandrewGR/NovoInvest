@@ -12,7 +12,7 @@ from .config import (
 from .broker_report_processor import BrokerReportParser, PositionCalculator
 import pandas as pd
 
-# Инициализация логирования
+# Инициализация логирования (выводим сразу в stdout)
 logging.basicConfig(
     level=LOG_LEVEL,
     format='%(asctime)s [%(levelname)s] %(name)s - %(message)s'
@@ -31,34 +31,53 @@ def process_xml_file(xml_file_path: str) -> pd.DataFrame:
     return positions_df
 
 
-def produce_positions(producer: KafkaProducer, positions_df: pd.DataFrame):
+def produce_positions(producer: KafkaProducer, user_id: str, positions_df: pd.DataFrame):
     """
     Отправляет данные о позициях (ISIN, количество бумаг, средняя цена покупки)
-    в указанный топик Kafka.
+    в указанный топик Kafka. Добавляем user_id, чтобы бот знал, кому отвечать.
     """
     if positions_df.empty:
         logger.info("Нет позиций для отправки в Kafka.")
+        # Даже если пусто, всё равно сообщим боту, что обработка завершена (без результатов)
+        empty_msg = {
+            "user_id": user_id,
+            "result": []
+        }
+        producer.send(
+            KAFKA_PRODUCE_TOPIC,
+            key=str(user_id).encode("utf-8"),
+            value=json.dumps(empty_msg).encode("utf-8")
+        )
+        producer.flush()
         return
 
+    # Формируем массив результатов
+    result_data = []
     for _, row in positions_df.iterrows():
         isin = row['ISIN']
         qty = row['количество бумаг']
         avg_price = row['средняя цена покупки']
-
-        msg_dict = {
+        result_data.append({
             "isin": isin,
             "quantity": qty,
             "avg_price": avg_price if avg_price is not None else None
-        }
-        try:
-            producer.send(
-                KAFKA_PRODUCE_TOPIC,
-                key=isin.encode('utf-8'),
-                value=json.dumps(msg_dict).encode('utf-8')
-            )
-            logger.info(f"Отправлено в Kafka: {msg_dict}")
-        except Exception as e:
-            logger.exception(f"Ошибка при отправке сообщения в Kafka: {e}")
+        })
+
+    # Отправляем одним сообщением список позиций
+    msg_dict = {
+        "user_id": user_id,
+        "result": result_data
+    }
+    try:
+        producer.send(
+            KAFKA_PRODUCE_TOPIC,
+            key=str(user_id).encode('utf-8'),
+            value=json.dumps(msg_dict).encode('utf-8')
+        )
+        producer.flush()
+        logger.info(f"Отправлено в Kafka (исходящие данные): {msg_dict}")
+    except Exception as e:
+        logger.exception(f"Ошибка при отправке результата в Kafka: {e}")
 
 
 def main():
@@ -77,17 +96,30 @@ def main():
         value_serializer=lambda x: x,  # Отправляем уже сериализованные байты
     )
 
-    logger.info(f"Подключились к Kafka. Ожидание сообщений из топика '{KAFKA_CONSUME_TOPIC}'...")
+    logger.info(f"[xml_worker] Подключились к Kafka. Ожидание сообщений из топика '{KAFKA_CONSUME_TOPIC}'...")
 
     for message in consumer:
-        xml_file_path = message.value  # путь к XML-файлу в сообщении
-        logger.info(f"Получено сообщение из Kafka. Путь к XML-файлу: {xml_file_path}")
+        # Ожидается JSON с полями { "user_id": ..., "file_path": ... }
+        msg_str = message.value
+        logger.info(f"[xml_worker] Получено сообщение из Kafka: {msg_str}")
+        try:
+            msg_json = json.loads(msg_str)
+        except json.JSONDecodeError:
+            logger.exception("Сообщение не является валидным JSON.")
+            continue
+
+        # Извлекаем user_id, путь к файлу и т.д.
+        user_id = msg_json.get("user_id")
+        xml_file_path = msg_json.get("file_path")
+        if not user_id or not xml_file_path:
+            logger.warning(f"Не указаны user_id или file_path в сообщении: {msg_json}")
+            continue
 
         # Обрабатываем XML-файл
         try:
             positions_df = process_xml_file(xml_file_path)
             # Публикуем результат в другой топик
-            produce_positions(producer, positions_df)
+            produce_positions(producer, user_id, positions_df)
         except Exception as e:
             logger.exception(f"Ошибка при обработке файла {xml_file_path}: {e}")
 

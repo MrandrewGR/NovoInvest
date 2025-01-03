@@ -4,6 +4,7 @@ import os
 import time
 import json
 import threading
+import asyncio
 
 from telegram import Update
 from telegram.ext import (
@@ -26,12 +27,7 @@ from app.config import (
 )
 from app.logger import logger
 
-# Глобальное хранилище для объекта приложения Telegram
-telegram_app = None
-
-# Словарь для отслеживания, какой user_id какой chat_id имеет,
-# чтобы отправлять ответы правильному получателю.
-# Ключ: user_id, значение: chat_id
+# Словарь, где ключ: user_id (str), значение: chat_id (int)
 USER_CHAT_MAP = {}
 
 
@@ -46,7 +42,7 @@ async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Обработчик входящих файлов.
     Проверяем, что файл — xml и пользователь есть в вайтлисте.
-    Переименовываем файл в user_id_timestamp.xml
+    Переименовываем файл в user_id_timestamp.xml.
     """
     user_id = update.effective_user.id
     chat_id = update.effective_chat.id
@@ -63,7 +59,7 @@ async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     document = update.message.document
     file_name = document.file_name
 
-    # Проверка, что файл имеет расширение .xml
+    # Проверка, что файл действительно .xml
     if not file_name.lower().endswith(".xml"):
         await update.message.reply_text("Кажется, это не XML-файл. Попробуй снова.")
         return
@@ -111,11 +107,11 @@ async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-def consume_results_from_kafka():
+def consume_results_from_kafka(application):
     """
     Запускается в отдельном потоке — слушаем топик KAFKA_RESULT_TOPIC.
     Когда приходят данные об обработке (isin_in_portfolio),
-    находим нужного пользователя и отправляем ему сообщение.
+    находим нужного пользователя и отправляем ему сообщение через event loop бота.
     """
     consumer = KafkaConsumer(
         KAFKA_RESULT_TOPIC,
@@ -127,6 +123,7 @@ def consume_results_from_kafka():
     )
 
     logger.info(f"[bot] Consumer запущен, слушаем топик '{KAFKA_RESULT_TOPIC}'...")
+
     for message in consumer:
         msg_str = message.value
         logger.info(f"[bot] Получено сообщение из Kafka (топик={KAFKA_RESULT_TOPIC}): {msg_str}")
@@ -144,13 +141,12 @@ def consume_results_from_kafka():
             logger.warning("Не указан user_id в результатах. Пропускаем.")
             continue
 
-        # Пытаемся найти соответствующий chat_id
+        # Находим chat_id
         chat_id = USER_CHAT_MAP.get(str(user_id))
         if not chat_id:
             logger.warning(f"Не найден chat_id для user_id={user_id}. Возможно, бот был перезапущен.")
             continue
 
-        # Формируем текст ответа
         if not result:
             text_msg = "Обработчик не вернул позиций по сделкам, видимо, пустой отчёт."
         else:
@@ -162,39 +158,42 @@ def consume_results_from_kafka():
                 lines.append(f"- ISIN: {isin}, Кол-во: {qty}, Средняя цена: {avgp}")
             text_msg = "\n".join(lines)
 
-        # Отправляем пользователю
-        try:
-            # Чтобы отправить сообщение, нужно асинхронно вызывать методы Telegram API.
-            # Но у нас отдельный поток, поэтому используем run_coroutine_threadsafe.
-            telegram_app.create_task(
-                telegram_app.bot.send_message(chat_id=chat_id, text=text_msg)
-            )
-            logger.info(f"Отправили результаты пользователю {user_id} (chat_id={chat_id}).")
-        except Exception as e:
-            logger.exception(f"Ошибка при отправке сообщения пользователю {user_id}: {e}")
+        # Формируем корутину, которая отправит сообщение
+        async def send_result():
+            try:
+                await application.bot.send_message(chat_id=chat_id, text=text_msg)
+                logger.info(f"Отправили результаты пользователю {user_id} (chat_id={chat_id}).")
+            except Exception as e:
+                logger.exception(f"Ошибка при отправке сообщения пользователю {user_id}: {e}")
+
+        # Запускаем корутину в event loop приложения
+        loop = application.bot.loop  # или application._loop, в зависимости от версии
+        asyncio.run_coroutine_threadsafe(send_result(), loop)
 
 
 def main():
     """Главная точка входа в приложение (бот)."""
-    global telegram_app
-
     logger.info("Запуск Телеграм-бота для приёма XML-файлов...")
 
     # Создаём приложение Telegram
-    telegram_app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
+    application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
 
     # Обработчики команд
-    telegram_app.add_handler(CommandHandler("start", start_command))
+    application.add_handler(CommandHandler("start", start_command))
 
     # Обработчик документов (files)
-    telegram_app.add_handler(MessageHandler(filters.Document.ALL, handle_file))
+    application.add_handler(MessageHandler(filters.Document.ALL, handle_file))
 
-    # Запускаем поток-потребитель Kafka (результаты обработки)
-    consumer_thread = threading.Thread(target=consume_results_from_kafka, daemon=True)
+    # Запускаем поток-потребитель Kafka
+    consumer_thread = threading.Thread(
+        target=consume_results_from_kafka,
+        args=(application,),
+        daemon=True
+    )
     consumer_thread.start()
 
     logger.info("Бот запущен. Ожидаю сообщений...")
-    telegram_app.run_polling()
+    application.run_polling()
 
 
 if __name__ == "__main__":

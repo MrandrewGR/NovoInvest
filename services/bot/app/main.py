@@ -30,7 +30,6 @@ from app.logger import logger
 # Словарь, где ключ: user_id (str), значение: chat_id (int)
 USER_CHAT_MAP = {}
 
-
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Стартовая команда /start."""
     user_id = update.effective_user.id
@@ -106,12 +105,11 @@ async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Файл '{file_name}' получен и сохранён как '{new_file_name}'. Отправил на обработку..."
     )
 
-
-def consume_results_from_kafka(application):
+def consume_results_from_kafka(application, loop):
     """
     Запускается в отдельном потоке — слушаем топик KAFKA_RESULT_TOPIC.
     Когда приходят данные об обработке (isin_in_portfolio),
-    находим нужного пользователя и отправляем ему сообщение через event loop приложения.
+    находим нужного пользователя и отправляем ему сообщение через event loop.
     """
     consumer = KafkaConsumer(
         KAFKA_RESULT_TOPIC,
@@ -124,8 +122,8 @@ def consume_results_from_kafka(application):
 
     logger.info(f"[bot] Consumer запущен, слушаем топик '{KAFKA_RESULT_TOPIC}'...")
 
-    for message in consumer:
-        msg_str = message.value
+    for msg in consumer:
+        msg_str = msg.value
         logger.info(f"[bot] Получено сообщение из Kafka (топик={KAFKA_RESULT_TOPIC}): {msg_str}")
 
         try:
@@ -141,15 +139,13 @@ def consume_results_from_kafka(application):
             logger.warning("Не указан user_id в результатах. Пропускаем.")
             continue
 
-        # Находим chat_id
         chat_id = USER_CHAT_MAP.get(str(user_id))
         if not chat_id:
             logger.warning(f"Не найден chat_id для user_id={user_id}. Возможно, бот был перезапущен.")
             continue
 
-        # Формируем текст для отправки
         if not result:
-            text_msg = "Обработчик не вернул позиций по сделкам, видимо, пустой отчёт."
+            text_msg = "Обработчик не вернул позиций по сделкам, возможно, отчёт пуст."
         else:
             lines = ["Результаты обработки XML:"]
             for item in result:
@@ -159,7 +155,6 @@ def consume_results_from_kafka(application):
                 lines.append(f"- ISIN: {isin}, Кол-во: {qty}, Средняя цена: {avgp}")
             text_msg = "\n".join(lines)
 
-        # Формируем корутину, которая отправит сообщение в чат Telegram
         async def send_result():
             try:
                 await application.bot.send_message(chat_id=chat_id, text=text_msg)
@@ -167,35 +162,37 @@ def consume_results_from_kafka(application):
             except Exception as e:
                 logger.exception(f"Ошибка при отправке сообщения пользователю {user_id}: {e}")
 
-        # Берём event loop из application (v20+)
-        loop = application.asyncio_loop
-        # Запускаем корутину в event loop (а не create_task из другого потока)
+        # Запускаем корутину send_result() в общем event loop
         asyncio.run_coroutine_threadsafe(send_result(), loop)
-
 
 def main():
     """Главная точка входа в приложение (бот)."""
     logger.info("Запуск Телеграм-бота для приёма XML-файлов...")
 
+    # 1) Создаём приложение
     application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
 
-    # Обработчики команд
-    application.add_handler(CommandHandler("start", start_command))
+    # 2) Явно создаём свой event loop и делаем его текущим
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
 
-    # Обработчик документов (files)
-    application.add_handler(MessageHandler(filters.Document.ALL, handle_file))
-
-    # Запускаем поток-потребитель Kafka
+    # 3) Запускаем поток-потребитель Kafka, передавая и application, и loop
     consumer_thread = threading.Thread(
         target=consume_results_from_kafka,
-        args=(application,),
+        args=(application, loop),
         daemon=True
     )
     consumer_thread.start()
 
-    logger.info("Бот запущен. Ожидаю сообщений...")
-    application.run_polling()
+    # 4) Регистрируем хендлеры
+    application.add_handler(CommandHandler("start", start_command))
+    application.add_handler(MessageHandler(filters.Document.ALL, handle_file))
 
+    logger.info("Бот запущен. Ожидаю сообщений...")
+
+    # 5) Запускаем бот в этом же event loop
+    # run_polling() - асинхронная функция, поэтому вызываем через run_until_complete
+    loop.run_until_complete(application.run_polling())
 
 if __name__ == "__main__":
     main()

@@ -3,9 +3,10 @@
 import os
 import json
 import time
+import psycopg2.extras
 import logging
 import psycopg2
-import psycopg2.extras
+import psycopg2.extensions
 
 from kafka import KafkaConsumer
 
@@ -31,22 +32,33 @@ def create_table_if_not_exists(conn):
         """)
         conn.commit()
 
+
 def ensure_database_exists(dbname, user, password, host, port):
     """Подключается к базе 'postgres' и создаёт dbname, если её нет."""
-    with psycopg2.connect(
+    # 1. Подключаемся к системной базе 'postgres'
+    conn = psycopg2.connect(
         dbname='postgres',
         user=user,
         password=password,
         host=host,
         port=port
-    ) as conn:
-        conn.autocommit = True
+    )
+
+    try:
+        # 2. Включаем режим autocommit, чтобы CREATE DATABASE не шёл в транзакции
+        conn.set_isolation_level(psycopg2.extensions.ISOLATION_LEVEL_AUTOCOMMIT)
+
+        # 3. Проверяем, существует ли нужная база
         with conn.cursor() as cur:
-            cur.execute("SELECT 1 FROM pg_database WHERE datname = %s", (dbname,))
+            cur.execute("SELECT 1 FROM pg_database WHERE datname = %s;", (dbname,))
             exists = cur.fetchone()
             if not exists:
                 logging.info(f"Database {dbname} not found. Creating...")
                 cur.execute(f"CREATE DATABASE {dbname};")
+                logging.info(f"Database {dbname} created successfully!")
+    finally:
+        # 4. Закрываем соединение
+        conn.close()
 
 
 def main():

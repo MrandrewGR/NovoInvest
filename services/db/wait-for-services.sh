@@ -12,6 +12,7 @@ wait_for_service() {
     sleep 4
   done
   echo "$host is up - continuing"
+  sleep 4
 }
 
 # Ожидание PostgreSQL (host=postgres, port=5432)

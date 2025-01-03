@@ -31,6 +31,24 @@ def create_table_if_not_exists(conn):
         """)
         conn.commit()
 
+def ensure_database_exists(dbname, user, password, host, port):
+    """Подключается к базе 'postgres' и создаёт dbname, если её нет."""
+    with psycopg2.connect(
+        dbname='postgres',
+        user=user,
+        password=password,
+        host=host,
+        port=port
+    ) as conn:
+        conn.autocommit = True
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1 FROM pg_database WHERE datname = %s", (dbname,))
+            exists = cur.fetchone()
+            if not exists:
+                logging.info(f"Database {dbname} not found. Creating...")
+                cur.execute(f"CREATE DATABASE {dbname};")
+
+
 def main():
     kafka_bootstrap_servers = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
     kafka_topic = os.environ.get("KAFKA_UBOT_OUTPUT_TOPIC", "tg_ubot_output")
@@ -40,6 +58,9 @@ def main():
     db_user = os.environ.get("DB_USER", "postgres")
     db_password = os.environ.get("DB_PASSWORD", "postgres")
     db_name = os.environ.get("DB_NAME", "tg_ubot")
+
+    # 1) Гарантированно убеждаемся, что tg_ubot есть:
+    ensure_database_exists(db_name, db_user, db_password, db_host, db_port)
 
     # Подключаемся к PostgreSQL
     conn = psycopg2.connect(

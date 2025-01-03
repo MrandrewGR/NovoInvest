@@ -158,7 +158,7 @@ def consume_results_from_kafka(application):
                 lines.append(f"- ISIN: {isin}, Кол-во: {qty}, Средняя цена: {avgp}")
             text_msg = "\n".join(lines)
 
-        # Формируем корутину, которая отправит сообщение
+        # Формируем корутину, которая отправит сообщение в чат Telegram
         async def send_result():
             try:
                 await application.bot.send_message(chat_id=chat_id, text=text_msg)
@@ -167,7 +167,8 @@ def consume_results_from_kafka(application):
                 logger.exception(f"Ошибка при отправке сообщения пользователю {user_id}: {e}")
 
         # Запускаем корутину в event loop приложения
-        loop = application.bot.loop  # или application._loop, в зависимости от версии
+        # В PTB v20+ event loop доступен через application.asyncio_loop
+        loop = application.asyncio_loop
         asyncio.run_coroutine_threadsafe(send_result(), loop)
 
 
@@ -175,7 +176,6 @@ def main():
     """Главная точка входа в приложение (бот)."""
     logger.info("Запуск Телеграм-бота для приёма XML-файлов...")
 
-    # Создаём приложение Telegram
     application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
 
     # Обработчики команд

@@ -67,9 +67,10 @@ def ensure_table_exists(conn, target_id):
             logger.info(f"Создание таблицы {table_name}")
             cur.execute(f"""
                 CREATE TABLE {table_name} (
-                    id SERIAL PRIMARY KEY,
+                    id SERIAL,
                     data JSONB NOT NULL,
-                    month_part DATE NOT NULL
+                    month_part DATE NOT NULL,
+                    PRIMARY KEY (id, month_part)
                 )
                 PARTITION BY RANGE (month_part);
             """)

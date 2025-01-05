@@ -42,6 +42,7 @@ def create_connection():
         logger.error(f"Не удалось подключиться к базе данных: {e}")
         raise
 
+
 def get_table_name(target_id):
     """
     Преобразование target_id в допустимое имя таблицы.
@@ -52,10 +53,11 @@ def get_table_name(target_id):
         return f"messages_neg{abs(target_id)}"
     return f"messages_{target_id}"
 
+
 def ensure_table_exists(conn, target_id):
     """
     Создаём "главную" таблицу под данный target_id, если она не существует,
-    с партиционированием по RANGE (created_at).
+    с партиционированием по RANGE (month_part).
     """
     table_name = get_table_name(target_id)
     with conn.cursor() as cur:
@@ -67,12 +69,13 @@ def ensure_table_exists(conn, target_id):
                 CREATE TABLE {table_name} (
                     id SERIAL PRIMARY KEY,
                     data JSONB NOT NULL,
-                    created_at TIMESTAMP WITH TIME ZONE NOT NULL
+                    month_part DATE NOT NULL
                 )
-                PARTITION BY RANGE (created_at);
+                PARTITION BY RANGE (month_part);
             """)
             conn.commit()
             logger.info(f"Таблица {table_name} успешно создана.")
+
 
 def ensure_partition_exists(conn, target_id, month_part):
     """
@@ -80,6 +83,9 @@ def ensure_partition_exists(conn, target_id, month_part):
     month_part в формате "YYYY-MM".
     """
     table_name = get_table_name(target_id)
+    # Преобразуем 'YYYY-MM' в дату первого дня месяца
+    start_date = datetime.strptime(month_part, '%Y-%m').date()
+    # Определяем название партиции
     partition_name = f"{table_name}_{month_part.replace('-', '_')}"
 
     with conn.cursor() as cur:
@@ -88,12 +94,11 @@ def ensure_partition_exists(conn, target_id, month_part):
 
         if not exists:
             logger.info(f"Создание партиции {partition_name}")
-            # Диапазон: [start_of_month, start_of_next_month)
-            start_date = datetime.strptime(month_part, '%Y-%m')
+            # Определяем границы диапазона
             if start_date.month == 12:
-                end_date = datetime(start_date.year + 1, 1, 1)
+                end_date = datetime(start_date.year + 1, 1, 1).date()
             else:
-                end_date = datetime(start_date.year, start_date.month + 1, 1)
+                end_date = datetime(start_date.year, start_date.month + 1, 1).date()
 
             cur.execute(f"""
                 CREATE TABLE {partition_name}
@@ -103,29 +108,33 @@ def ensure_partition_exists(conn, target_id, month_part):
             conn.commit()
             logger.info(f"Партиция {partition_name} успешно создана.")
 
+
 def insert_message(conn, target_id, month_part, message_data):
     """
     Вставляет сообщение в соответствующую таблицу и партицию.
-    created_at берём из 'date' внутри message_data.
+    month_part берём из 'month_part' внутри message_data.
     """
     table_name = get_table_name(target_id)
-    created_at_str = message_data.get("date")  # ISO-строка
-    if not created_at_str:
-        # fallback: ставим текущую дату
-        created_at_str = datetime.now().isoformat()
+    month_part_str = message_data.get("month_part")  # строка в формате "YYYY-MM"
+    if not month_part_str:
+        # fallback: ставим текущий месяц
+        month_part_str = datetime.now().strftime('%Y-%m')
+    # Преобразуем в дату первого дня месяца
+    month_part_date = datetime.strptime(month_part_str, '%Y-%m').date()
 
     with conn.cursor() as cur:
         try:
             cur.execute(f"""
-                INSERT INTO {table_name} (data, created_at)
+                INSERT INTO {table_name} (data, month_part)
                 VALUES (%s, %s)
-            """, (json.dumps(message_data), created_at_str))
+            """, (json.dumps(message_data), month_part_date))
             conn.commit()
             logger.info(f"Сообщение вставлено в {table_name}")
         except Exception as e:
             conn.rollback()
             logger.error(f"Ошибка при вставке сообщения в {table_name}: {e}")
             raise
+
 
 def run_consumer():
     """
@@ -180,6 +189,7 @@ def run_consumer():
     finally:
         conn.close()
         logger.info("Соединение с БД закрыто.")
+
 
 if __name__ == "__main__":
     run_consumer()

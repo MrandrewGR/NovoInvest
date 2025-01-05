@@ -1,4 +1,3 @@
-# File location: ./.github/workflows/deploy.yml
 name: Deploy to Hetzner
 
 on:
@@ -127,7 +126,6 @@ jobs:
         run: |
           ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose restart tg_ubot"
 
-
       # Шаг 9.1: Остановка сервиса Kafka для обеспечения чистого завершения
       - name: Stop Kafka
         run: |
@@ -187,20 +185,29 @@ jobs:
             exit 0
           fi
 
+          # Если полный деплой или изменён docker-compose.yml — копируем весь проект и поднимаем всё
           if [ "${{ env.FULL_DEPLOY }}" == "true" ] || [ "${{ env.DOCKER_COMPOSE_CHANGED }}" == "true" ]; then
-            # Копируем весь проект на сервер
             rsync -avz --exclude '.git' --exclude '.github' . dev@${{ secrets.SSH_HOST }}:/home/dev/app/
-            # Запускаем все сервисы
             ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose up -d --build --force-recreate"
           else
-            # Копируем только изменённые сервисы
+            # Иначе копируем только изменённые сервисы
             for service in $SERVICES; do
               echo "Deploying service: $service"
-              # Копируем целиком папку этого микросервиса
               rsync -avz --exclude '.git' --exclude '.github' services/$service/ dev@${{ secrets.SSH_HOST }}:/home/dev/app/services/$service/
             done
-            # После копирования всех изменённых сервисов — поднимаем их
             ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose up -d --build --remove-orphans --force-recreate $SERVICES"
+          fi
+
+      - name: Recreate PostgreSQL volume if DB changed
+        run: |
+          # Предполагаем, что сервис называется "db" и в docker-compose.yml у вас он описывает Postgres.
+          # Если в вашем docker-compose имя сервиса "postgres" — замените в командах ниже "db" на нужное имя.
+          if echo "${{ env.CHANGED_SERVICES }}" | grep -q "db"; then
+            echo "Изменения в сервисе db. Перезапускаем контейнер и пересоздаём volume."
+            ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose stop db && docker compose rm -f -v db"
+            ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose up -d db"
+          else
+            echo "Сервис db не изменялся. Пропускаем пересоздание volume."
           fi
 
       # Шаг 14: Проверка статуса Docker Compose
@@ -235,7 +242,6 @@ jobs:
           
           # Ждём максимум ~2 минуты (24 раза по 5 секунд)
           for i in {1..24}; do
-            # Забираем JSON о контейнерах
             status=$(ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose ps --format json" \
               | jq -r '.[] | select(.Service == "kafka") | .Health')
             
@@ -252,13 +258,9 @@ jobs:
       # Шаг 18: Проверка здоровья Kafka
       - name: Check Kafka Health
         run: |
-          # Дополнительная проверка: если команда выдала ошибку - сломаем пайплайн
           ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose exec kafka kafka-broker-api-versions --bootstrap-server localhost:9092"
           echo "Kafka is alive and responding"
 
-      # --- ДОБАВЛЯЕМ ШАГ ОЧИСТКИ НЕИСПОЛЬЗУЕМЫХ ТОМОВ ---
       - name: Remove unused Docker volumes
         run: |
-          # Удаляем все неиспользуемые тома (включая анонимные).
-          # Если какие-то тома сейчас используются контейнерами — они не будут удалены.
           ssh dev@${{ secrets.SSH_HOST }} "docker volume prune -f"

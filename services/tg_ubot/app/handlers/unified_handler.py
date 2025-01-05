@@ -3,7 +3,11 @@
 import logging
 import asyncio
 from telethon import TelegramClient, events
-from telethon.tl.types import Message
+from telethon.tl.types import (
+    Message,
+    MessageEntityUrl,
+    MessageEntityTextUrl  # <-- Добавили импорт типов
+)
 from app.config import settings
 from app.utils import human_like_delay, get_delay_settings, serialize_message, ensure_dir
 import os
@@ -81,6 +85,9 @@ async def process_message_event(event, event_type, message_buffer, counter, clie
         except Exception as e:
             logger.error(f"Не удалось получить информацию о чате/канале: {e}")
 
+        target_id = chat_info.get("chat_id")
+        month_part = msg.date.strftime('%Y-%m')
+
         # Собираем реакции (если Telethon поддерживает msg.reactions)
         reactions_info = []
         if getattr(msg, "reactions", None):
@@ -103,7 +110,7 @@ async def process_message_event(event, event_type, message_buffer, counter, clie
             except Exception as e:
                 logger.error(f"Не удалось получить reply-сообщение: {e}")
 
-        # Проверка, было ли отредактировано (для new_message может быть msg.edit_date is None)
+        # Проверка, было ли отредактировано (для new_message msg.edit_date, как правило, None)
         edited_info = {}
         if msg.edit_date:
             edited_info["was_edited"] = True
@@ -111,7 +118,6 @@ async def process_message_event(event, event_type, message_buffer, counter, clie
 
         # Если есть forward
         forward_info = {}
-
         if msg.forward:
             forward_info = {
                 "is_forwarded": True,
@@ -127,23 +133,30 @@ async def process_message_event(event, event_type, message_buffer, counter, clie
             except Exception as e:
                 logger.error(f"Не удалось получить чат для пересланного сообщения: {e}")
         else:
-            forward_info = {
-                "is_forwarded": False
-            }
+            forward_info["is_forwarded"] = False
 
-        # «Цитаты» внутри самого текста — обычно вы парсите msg.raw_text на «> quote»
+        # «Цитаты» внутри самого текста — по желанию, если нужно
         quotes = []
-        if msg.raw_text:
-            for line in msg.raw_text.splitlines():
+        raw_text = msg.raw_text or ""
+        if raw_text:
+            for line in raw_text.splitlines():
                 if line.strip().startswith(">"):
                     quotes.append(line.strip())
 
-        # Формируем итоговый JSON
+        # --- НОВАЯ ЧАСТЬ: извлекаем ссылки + строим markdown-версию
+        text_markdown, links = build_markdown_and_links(raw_text, msg.entities or [])
+
+        # Формируем итоговый JSON, теперь с text_plain, text_markdown и links
         message_data = {
             "event_type": event_type,
             "message_id": msg.id,
             "date": msg.date.isoformat(),
-            "text": msg.raw_text or "",
+            "month_part": month_part,
+
+            "text_plain": raw_text,     # <--- «чистый» текст
+            "text_markdown": text_markdown,  # <--- markdown-версия
+            "links": links,            # <--- список словарей c offset/length/url/display_text
+
             "media_path": media_path,
             "reactions": reactions_info,
             "quotes": quotes,
@@ -152,6 +165,7 @@ async def process_message_event(event, event_type, message_buffer, counter, clie
             **edited_info,
             "sender": sender_info,
             "chat": chat_info,
+            "target_id": target_id
         }
 
         # Отправляем в общий topic tg_ubot_output (или тот, что задан в .env)
@@ -162,3 +176,72 @@ async def process_message_event(event, event_type, message_buffer, counter, clie
         logger.info(f"[unified_handler] Обработано сообщение {msg.id} из {chat_info.get('chat_title','')}")
     except Exception as e:
         logger.exception(f"Ошибка в process_message_event: {e}")
+
+def build_markdown_and_links(raw_text: str, entities: list):
+    """
+    Превращает исходный текст + entities в:
+    1) Markdown-представление (где ссылки оформлены [текст](url))
+    2) Список ссылок (offset, length, url, display_text)
+    """
+    # Если нет сущностей, возвращаем raw_text как есть и пустой массив
+    if not entities:
+        return raw_text, []
+
+    # Финальная строка для markdown
+    md_fragments = []
+    # Список ссылок
+    links = []
+
+    last_offset = 0
+    # Сортируем entities по offset
+    entities_sorted = sorted(entities, key=lambda e: e.offset)
+
+    for entity in entities_sorted:
+        # Добавляем кусок текста от предыдущего offset до текущего entity.offset (без изменений)
+        if entity.offset > last_offset:
+            md_fragments.append(raw_text[last_offset:entity.offset])
+
+        # Длина текущего entity
+        e_length = entity.length
+        # Фрагмент текста, на который указывает entity
+        display_text = raw_text[entity.offset : entity.offset + e_length]
+
+        if isinstance(entity, MessageEntityUrl):
+            # URL, который виден напрямую в тексте
+            url = display_text  # Само по себе является ссылкой
+            # Добавляем в markdown [display_text](url)
+            md_fragments.append(f"[{display_text}]({url})")
+            # Добавляем в список ссылок
+            links.append({
+                "offset": entity.offset,
+                "length": e_length,
+                "url": url,
+                "display_text": display_text
+            })
+            last_offset = entity.offset + e_length
+
+        elif isinstance(entity, MessageEntityTextUrl) and entity.url:
+            # «Скрытая» ссылка, реальный url лежит в entity.url
+            url = entity.url
+            md_fragments.append(f"[{display_text}]({url})")
+            links.append({
+                "offset": entity.offset,
+                "length": e_length,
+                "url": url,
+                "display_text": display_text
+            })
+            last_offset = entity.offset + e_length
+
+        else:
+            # Любая другая entity: можно обрабатывать по желанию
+            # Пока просто добавляем исходный текст, без особой обработки
+            md_fragments.append(display_text)
+            last_offset = entity.offset + e_length
+
+    # Добавляем остаток текста, который идёт после последней entity
+    if last_offset < len(raw_text):
+        md_fragments.append(raw_text[last_offset:])
+
+    # Склеиваем всё в одну строку
+    text_markdown = "".join(md_fragments)
+    return text_markdown, links

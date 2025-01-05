@@ -13,4 +13,4 @@ COPY . /app
 
 RUN chmod +x /app/wait-for-services.sh
 
-CMD ["/app/wait-for-services.sh", "python", "main.py"]
+CMD ["/app/wait-for-services.sh", "bash", "-c", "python main.py && python process_messages.py"]

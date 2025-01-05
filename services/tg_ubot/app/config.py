@@ -26,10 +26,10 @@ class Settings(BaseSettings):
     TRANSITION_END_TO_DAY: str = "08:00"
 
     # Задержки для «днём» и «ночью»
-    CHAT_DELAY_MIN_DAY: float = 2.0
-    CHAT_DELAY_MAX_DAY: float = 7.0
-    CHAT_DELAY_MIN_NIGHT: float = 5.0
-    CHAT_DELAY_MAX_NIGHT: float = 12.0
+    CHAT_DELAY_MIN_DAY: float = 1.0
+    CHAT_DELAY_MAX_DAY: float = 3.0
+    CHAT_DELAY_MIN_NIGHT: float = 2.0
+    CHAT_DELAY_MAX_NIGHT: float = 6.0
 
     CHANNEL_DELAY_MIN_DAY: float = 5.0
     CHANNEL_DELAY_MAX_DAY: float = 10.0

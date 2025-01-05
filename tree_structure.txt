@@ -42,8 +42,14 @@
 │   │   ├── requirements.txt
 │   │   └── wait-for-it.sh
 │   └── xml_worker
-│       └── app
-│           └── __init__.py
+│       ├── Dockerfile
+│       ├── app
+│       │   ├── __init__.py
+│       │   ├── broker_report_processor.py
+│       │   ├── config.py
+│       │   └── main.py
+│       ├── requirements.txt
+│       └── wait-for-services.sh
 ├── tree_structure.txt
 └── utils
     ├── get structure.py

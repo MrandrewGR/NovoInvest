@@ -69,7 +69,6 @@ async def run_userbot():
                 # Попробуем переоткрыть producer
                 kafka_producer = None
                 await asyncio.sleep(RECONNECT_INTERVAL)
-            await human_like_delay(1.0, 15.0)
 
     async def initialize_kafka_consumer():
         nonlocal kafka_consumer

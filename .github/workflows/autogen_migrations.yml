@@ -86,3 +86,4 @@ jobs:
 
       - name: Stop Postgres
         run: docker stop local-postgres && docker rm local-postgres
+

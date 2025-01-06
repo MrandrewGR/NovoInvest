@@ -4,7 +4,7 @@ from logging.config import fileConfig
 
 from sqlalchemy import engine_from_config, pool
 from alembic import context
-from app.models import Base  # <-- наши модели
+from db.models import Base  # <-- наши модели
 
 # Подтягиваем настройки из alembic.ini
 config = context.config

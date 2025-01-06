@@ -17,9 +17,15 @@
 │   ├── db
 │   │   ├── Dockerfile
 │   │   ├── __init__.py
-│   │   ├── init-db
-│   │   │   └── init.sql
+│   │   ├── alembic.ini
 │   │   ├── main.py
+│   │   ├── migrations
+│   │   │   ├── env.py
+│   │   │   ├── script.py.mako
+│   │   │   └── versions
+│   │   │       └── 0001_init_db.py
+│   │   ├── models.py
+│   │   ├── process_messages.py
 │   │   ├── requirements.txt
 │   │   └── wait-for-services.sh
 │   ├── tg_ubot

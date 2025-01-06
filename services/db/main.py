@@ -1,5 +1,4 @@
 # services/db/main.py
-
 import os
 import logging
 import psycopg2
@@ -11,11 +10,9 @@ logging.basicConfig(
 )
 
 def ensure_database_exists(dbname, user, password, host, port):
-    """
-    Подключается к базе 'postgres' (системной) и создаёт dbname, если её нет.
-    """
+    """Подключается к базе 'postgres' и создаёт dbname, если её нет."""
     conn = psycopg2.connect(
-        dbname='postgres',  # Подключаемся к «системной» БД
+        dbname='postgres',
         user=user,
         password=password,
         host=host,
@@ -34,31 +31,21 @@ def ensure_database_exists(dbname, user, password, host, port):
         conn.close()
 
 def create_common_objects(conn):
-    """
-    Здесь можно создать общие объекты, например, расширения,
-    схемы или базовые таблицы. При необходимости.
-    """
+    """Создаём любые расширения или схемы, если нужно."""
     with conn.cursor() as cur:
-        # Пример: если нужно, создаём какую-то схему:
-        # cur.execute("CREATE SCHEMA IF NOT EXISTS my_schema;")
-        # conn.commit()
+        # Например: cur.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto;")
         pass
+    conn.commit()
 
 def main():
-    """
-    Подготовка БД: создаём (если нет) и инициализируем общие объекты.
-    """
-    # Считываем переменные окружения
     db_host = os.environ.get("DB_HOST", "postgres")
     db_port = os.environ.get("DB_PORT", "5432")
     db_user = os.environ.get("DB_USER", "postgres")
     db_password = os.environ.get("DB_PASSWORD", "postgres")
     db_name = os.environ.get("DB_NAME", "tg_ubot")
 
-    # 1: Гарантированно убеждаемся, что нужная база данных существует.
     ensure_database_exists(db_name, db_user, db_password, db_host, db_port)
 
-    # 2: Подключаемся к созданной БД и создаём общие объекты, если надо
     conn = psycopg2.connect(
         dbname=db_name,
         user=db_user,

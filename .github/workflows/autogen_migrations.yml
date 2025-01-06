@@ -1,0 +1,88 @@
+name: Autogenerate Alembic migrations
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  autogen:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # нужно получить всю историю
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: |
+          cd services/db
+          pip install --no-cache-dir -r requirements.txt
+          # Установим также alembic и psycopg2-binary, если нет в requirements.txt
+          # pip install alembic psycopg2-binary
+
+      - name: Create DB container
+        uses: docker/setup-buildx-action@v2
+      - name: Start Postgres
+        run: |
+          docker run -d --name local-postgres \
+            -e POSTGRES_USER=postgres \
+            -e POSTGRES_PASSWORD=postgres \
+            -p 5432:5432 \
+            postgres:15-alpine
+          # Ждём несколько секунд, пока Postgres поднимется
+          sleep 10
+
+      - name: Autogenerate migration
+        run: |
+          cd services/db
+          # Настроим переменные окружения для подключения к локальной контейнерной БД
+          export DB_HOST=127.0.0.1
+          export DB_PORT=5432
+          export DB_USER=postgres
+          export DB_PASSWORD=postgres
+          export DB_NAME=my_local_autogen_db
+
+          # Создадим базу my_local_autogen_db (аналог main.py)
+          python <<EOF
+          import os
+          from sqlalchemy import create_engine, text
+
+          system_url = f"postgresql+psycopg2://{os.environ['DB_USER']}:{os.environ['DB_PASSWORD']}@{os.environ['DB_HOST']}:{os.environ['DB_PORT']}/postgres"
+          eng = create_engine(system_url, isolation_level="AUTOCOMMIT")
+          with eng.connect() as conn:
+              res = conn.execute(text("SELECT 1 FROM pg_database WHERE datname='my_local_autogen_db'"))
+              if not res.fetchone():
+                  conn.execute(text("CREATE DATABASE my_local_autogen_db"))
+          EOF
+
+          # Теперь сделаем "alembic revision --autogenerate"
+          alembic revision --autogenerate -m "AutoMigration for commit $GITHUB_SHA"
+
+          # Если миграция не сгенерировалась (пустая), Alembic создаст пустой файл.
+          # Проверим, пуста ли папка migrations/versions со свежей датой?
+          # Или проще проверить "git status" ниже.
+
+      - name: Commit and push migration
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Добавим новые/изменённые миграции
+          git add services/db/migrations/versions/
+
+          # Проверяем, есть ли что коммитить
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "No new migration changes. Skip commit."
+          else
+            git commit -m "AutoMigration for commit $GITHUB_SHA"
+            git push origin HEAD:main
+          fi
+
+      - name: Stop Postgres
+        run: docker stop local-postgres && docker rm local-postgres

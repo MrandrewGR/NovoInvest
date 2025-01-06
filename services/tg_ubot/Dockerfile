@@ -1,4 +1,15 @@
+# File location: services/tg_ubot/Dockerfile
 FROM python:3.11-slim
+
+# Отключаем интерактивный режим, чтобы tzdata не запрашивала часовой пояс в консоли
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Устанавливаем tzdata, чтобы иметь локальные файлы для часовых поясов
+RUN apt-get update && apt-get install -y --no-install-recommends tzdata
+
+# Настраиваем часовой пояс на московский
+ENV TZ=Europe/Moscow
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 # Установите рабочую директорию
 WORKDIR /app

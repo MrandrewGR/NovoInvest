@@ -4,10 +4,9 @@ import asyncio
 import random
 import logging
 from zoneinfo import ZoneInfo
-from datetime import datetime, time  # Импортируем класс datetime напрямую
+from datetime import datetime, time, timedelta
 from .config import settings
 import os
-
 
 logger = logging.getLogger("utils")
 
@@ -15,97 +14,131 @@ def get_current_time_moscow():
     return datetime.now(ZoneInfo("Europe/Moscow"))
 
 def is_night_time():
+    """Простая проверка, попадаем ли в интервал 22:00—06:00."""
     current_time = get_current_time_moscow().time()
     return current_time >= time(22, 0) or current_time < time(6, 0)
 
+def compute_transition_fraction(
+    current_time: datetime,
+    start_time: time,
+    end_time: time
+) -> float:
+    """
+    Считает, какой «процент» (0…1) пройден между start_time и end_time
+    относительно current_time с учётом таймзоны.
+    Делает корректировку, если end_dt < start_dt (т.е. переход через полночь).
+    """
+
+    # Привязываем start_dt и end_dt к ТЕКУЩЕЙ дате и таймзоне current_time
+    start_dt = current_time.replace(
+        hour=start_time.hour,
+        minute=start_time.minute,
+        second=0,
+        microsecond=0
+    )
+    end_dt = current_time.replace(
+        hour=end_time.hour,
+        minute=end_time.minute,
+        second=0,
+        microsecond=0
+    )
+
+    # Если end_dt < start_dt, значит пересекаем полночь.
+    # Для корректности добавим 1 день к end_dt.
+    if end_dt < start_dt:
+        end_dt += timedelta(days=1)
+
+    total_seconds = (end_dt - start_dt).total_seconds()
+    elapsed_seconds = (current_time - start_dt).total_seconds()
+
+    # fraction не должен выходить за диапазон [0..1]
+    fraction = elapsed_seconds / total_seconds
+    if fraction < 0:
+        fraction = 0
+    elif fraction > 1:
+        fraction = 1
+
+    return fraction
+
+def interpolate_delays(
+    day_min: float,
+    day_max: float,
+    night_min: float,
+    night_max: float,
+    fraction: float,
+    direction: str = "day_to_night"
+) -> tuple[float, float]:
+    """
+    Возвращает (min_delay, max_delay), интерполируя от дневных к ночным или наоборот,
+    в зависимости от direction.
+    - direction='day_to_night': 0 -> day, 1 -> night
+    - direction='night_to_day': 0 -> night, 1 -> day
+    """
+    if direction == "day_to_night":
+        # fraction=0 => day, fraction=1 => night
+        min_delay = day_min + fraction * (night_min - day_min)
+        max_delay = day_max + fraction * (night_max - day_max)
+    else:  # direction == "night_to_day"
+        # fraction=0 => night, fraction=1 => day
+        min_delay = night_min + fraction * (day_min - night_min)
+        max_delay = night_max + fraction * (day_max - night_max)
+
+    return min_delay, max_delay
+
 def get_delay_settings(delay_type: str):
+    """
+    Универсальная логика: днём, ночью, и "переходные" интервалы (день->ночь, ночь->день).
+    """
     current_time = get_current_time_moscow()
     current_time_only = current_time.time()
 
-    transition_start_to_night = datetime.strptime(settings.TRANSITION_START_TO_NIGHT, "%H:%M").time()
-    transition_end_to_night = datetime.strptime(settings.TRANSITION_END_TO_NIGHT, "%H:%M").time()
-    transition_start_to_day = datetime.strptime(settings.TRANSITION_START_TO_DAY, "%H:%M").time()
-    transition_end_to_day = datetime.strptime(settings.TRANSITION_END_TO_DAY, "%H:%M").time()
+    # Читаем из настроек (times без даты, tz)
+    start_night_t = datetime.strptime(settings.TRANSITION_START_TO_NIGHT, "%H:%M").time()  # 20:00
+    end_night_t   = datetime.strptime(settings.TRANSITION_END_TO_NIGHT, "%H:%M").time()    # 22:00
+    start_day_t   = datetime.strptime(settings.TRANSITION_START_TO_DAY, "%H:%M").time()    # 06:00
+    end_day_t     = datetime.strptime(settings.TRANSITION_END_TO_DAY, "%H:%M").time()      # 08:00
 
-    # Переход к ночи
-    if transition_start_to_night <= current_time_only < transition_end_to_night:
-        # Заменяем часы и минуты current_time, сохраняя таймзону:
-        start_dt = current_time.replace(
-            hour=transition_start_to_night.hour,
-            minute=transition_start_to_night.minute,
-            second=0,
-            microsecond=0
+    if delay_type == "chat":
+        day_min, day_max = settings.CHAT_DELAY_MIN_DAY, settings.CHAT_DELAY_MAX_DAY
+        night_min, night_max = settings.CHAT_DELAY_MIN_NIGHT, settings.CHAT_DELAY_MAX_NIGHT
+    else:  # например, channel
+        day_min, day_max = settings.CHANNEL_DELAY_MIN_DAY, settings.CHANNEL_DELAY_MAX_DAY
+        night_min, night_max = settings.CHANNEL_DELAY_MIN_NIGHT, settings.CHANNEL_DELAY_MAX_NIGHT
+
+    # Переход к ночи (20:00 - 22:00)
+    if start_night_t <= current_time_only < end_night_t:
+        fraction = compute_transition_fraction(current_time, start_night_t, end_night_t)
+        min_delay, max_delay = interpolate_delays(
+            day_min, day_max, night_min, night_max,
+            fraction, direction="day_to_night"
         )
-
-        end_dt = current_time.replace(
-            hour=transition_end_to_night.hour,
-            minute=transition_end_to_night.minute,
-            second=0,
-            microsecond=0
-        )
-
-        total_seconds = (end_dt - start_dt).total_seconds()
-        elapsed_seconds = (current_time - start_dt).total_seconds()
-        fraction = elapsed_seconds / total_seconds
-
-        if delay_type == "chat":
-            min_delay = settings.CHAT_DELAY_MIN_DAY + fraction * (settings.CHAT_DELAY_MIN_NIGHT - settings.CHAT_DELAY_MIN_DAY)
-            max_delay = settings.CHAT_DELAY_MAX_DAY + fraction * (settings.CHAT_DELAY_MAX_NIGHT - settings.CHAT_DELAY_MAX_DAY)
-        elif delay_type == "channel":
-            min_delay = settings.CHANNEL_DELAY_MIN_DAY + fraction * (settings.CHANNEL_DELAY_MIN_NIGHT - settings.CHANNEL_DELAY_MIN_DAY)
-            max_delay = settings.CHANNEL_DELAY_MAX_DAY + fraction * (settings.CHANNEL_DELAY_MAX_NIGHT - settings.CHANNEL_DELAY_MAX_DAY)
-        else:
-            min_delay, max_delay = (1.0, 5.0)
-
-        logger.debug(f"Переход к ночным задержкам ({delay_type}): min={min_delay}, max={max_delay}")
+        logger.debug(f"Переход к ночи: fraction={fraction:.2f}, min={min_delay:.2f}, max={max_delay:.2f}")
         return (min_delay, max_delay)
 
-    # Переход к дню
-    elif transition_start_to_day <= current_time_only < transition_end_to_day:
-        start_dt = datetime.combine(current_time.date(), transition_start_to_day)
-        end_dt = datetime.combine(current_time.date(), transition_end_to_day)
-        total_seconds = (end_dt - start_dt).total_seconds()
-        elapsed_seconds = (current_time - start_dt).total_seconds()
-        fraction = elapsed_seconds / total_seconds
-
-        if delay_type == "chat":
-            min_delay = settings.CHAT_DELAY_MIN_NIGHT + fraction * (settings.CHAT_DELAY_MIN_DAY - settings.CHAT_DELAY_MIN_NIGHT)
-            max_delay = settings.CHAT_DELAY_MAX_NIGHT + fraction * (settings.CHAT_DELAY_MAX_DAY - settings.CHAT_DELAY_MAX_NIGHT)
-        elif delay_type == "channel":
-            min_delay = settings.CHANNEL_DELAY_MIN_NIGHT + fraction * (settings.CHANNEL_DELAY_MIN_DAY - settings.CHANNEL_DELAY_MIN_NIGHT)
-            max_delay = settings.CHANNEL_DELAY_MAX_NIGHT + fraction * (settings.CHANNEL_DELAY_MAX_DAY - settings.CHANNEL_DELAY_MAX_NIGHT)
-        else:
-            min_delay, max_delay = (1.0, 5.0)
-
-        logger.debug(f"Переход к дневным задержкам ({delay_type}): min={min_delay}, max={max_delay}")
+    # Переход к дню (06:00 - 08:00)
+    elif start_day_t <= current_time_only < end_day_t:
+        fraction = compute_transition_fraction(current_time, start_day_t, end_day_t)
+        min_delay, max_delay = interpolate_delays(
+            day_min, day_max, night_min, night_max,
+            fraction, direction="night_to_day"
+        )
+        logger.debug(f"Переход к дню: fraction={fraction:.2f}, min={min_delay:.2f}, max={max_delay:.2f}")
         return (min_delay, max_delay)
 
+    # Полная ночь (22:00—06:00)
     elif is_night_time():
-        if delay_type == "chat":
-            min_delay = settings.CHAT_DELAY_MIN_NIGHT
-            max_delay = settings.CHAT_DELAY_MAX_NIGHT
-        elif delay_type == "channel":
-            min_delay = settings.CHANNEL_DELAY_MIN_NIGHT
-            max_delay = settings.CHANNEL_DELAY_MAX_NIGHT
-        else:
-            min_delay, max_delay = (1.0, 5.0)
+        logger.debug(f"Полная ночь: min={night_min}, max={night_max}")
+        return (night_min, night_max)
 
-        logger.debug(f"Ночные задержки ({delay_type}): min={min_delay}, max={max_delay}")
-        return (min_delay, max_delay)
+    # Остальное время — полный день (08:00—20:00)
     else:
-        if delay_type == "chat":
-            min_delay = settings.CHAT_DELAY_MIN_DAY
-            max_delay = settings.CHAT_DELAY_MAX_DAY
-        elif delay_type == "channel":
-            min_delay = settings.CHANNEL_DELAY_MIN_DAY
-            max_delay = settings.CHANNEL_DELAY_MAX_DAY
-        else:
-            min_delay, max_delay = (1.0, 5.0)
-
-        logger.debug(f"Дневные задержки ({delay_type}): min={min_delay}, max={max_delay}")
-        return (min_delay, max_delay)
+        logger.debug(f"Полный день: min={day_min}, max={day_max}")
+        return (day_min, day_max)
 
 async def human_like_delay(delay_min: float, delay_max: float):
+    """
+    Рандомная задержка в заданном диапазоне [delay_min, delay_max].
+    """
     delay = random.uniform(delay_min, delay_max)
     logger.debug(f"Задержка на {delay:.2f} секунд")
     await asyncio.sleep(delay)
@@ -122,26 +155,20 @@ def ensure_dir(path: str):
 def serialize_message(message):
     """
     Recursively serialize a message object to a JSON-serializable format.
-
-    Args:
-        message: The message object or data to serialize.
-
-    Returns:
-        A JSON-serializable representation of the message.
     """
     try:
         if isinstance(message, dict):
             return {k: serialize_message(v) for k, v in message.items()}
         elif isinstance(message, list):
             return [serialize_message(item) for item in message]
-        elif isinstance(message, datetime.datetime):
+        elif isinstance(message, datetime):
             return message.isoformat()
         elif isinstance(message, bytes):
-            return message.decode('utf-8', errors='replace')  # Decode bytes to UTF-8 string
+            return message.decode('utf-8', errors='replace')
         elif hasattr(message, 'to_dict'):
-            return serialize_message(message.to_dict())  # Convert Telethon or similar objects to dict
+            return serialize_message(message.to_dict())
         else:
             return message
     except Exception as e:
         logger.error(f"Error during message serialization: {e}")
-        return str(message)  # Fallback to string representation if serialization fails
+        return str(message)

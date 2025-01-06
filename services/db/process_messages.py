@@ -1,12 +1,13 @@
 # services/db/process_messages.py
+
 import os
 import json
 import logging
+import psycopg2
+import psycopg2.extras
+from psycopg2 import OperationalError, InterfaceError
 from datetime import datetime
-
 from kafka import KafkaConsumer
-from sqlalchemy import create_engine, text
-from sqlalchemy.exc import OperationalError, InterfaceError
 
 logging.basicConfig(
     level=logging.INFO,
@@ -14,7 +15,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("process_messages")
 
-# Читаем переменные окружения
+# Считываем переменные окружения
 DB_HOST = os.environ.get("DB_HOST", "postgres")
 DB_PORT = os.environ.get("DB_PORT", "5432")
 DB_USER = os.environ.get("DB_USER", "postgres")
@@ -26,13 +27,21 @@ KAFKA_TOPIC = os.environ.get("KAFKA_UBOT_OUTPUT_TOPIC", "tg_ubot_output")
 KAFKA_GROUP_ID = os.environ.get("KAFKA_GROUP_ID", "db_consumer_group")
 
 
-def create_engine_connection():
-    """
-    Создаёт SQLAlchemy Engine для подключения к PostgreSQL.
-    """
-    url = f"postgresql+psycopg2://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-    engine = create_engine(url, future=True)
-    return engine
+def create_connection():
+    """Подключение к PostgreSQL."""
+    try:
+        conn = psycopg2.connect(
+            host=DB_HOST,
+            port=DB_PORT,
+            user=DB_USER,
+            password=DB_PASSWORD,
+            dbname=DB_NAME
+        )
+        conn.autocommit = False
+        return conn
+    except Exception as e:
+        logger.error(f"Не удалось подключиться к базе данных: {e}")
+        raise
 
 
 def get_table_name(target_id):
@@ -52,24 +61,22 @@ def ensure_table_exists(conn, target_id):
     PRIMARY KEY включает month_part.
     """
     table_name = get_table_name(target_id)
-
-    # Проверяем, существует ли таблица
-    check_sql = text("SELECT to_regclass(:table_name);")
-    exists = conn.execute(check_sql, {"table_name": table_name}).scalar()
-
-    if not exists:
-        logger.info(f"Создание таблицы {table_name}")
-        create_sql = text(f"""
-            CREATE TABLE {table_name} (
-                id SERIAL,
-                data JSONB NOT NULL,
-                month_part DATE NOT NULL,
-                PRIMARY KEY (id, month_part)
-            )
-            PARTITION BY RANGE (month_part);
-        """)
-        conn.execute(create_sql)
-        logger.info(f"Таблица {table_name} успешно создана.")
+    with conn.cursor() as cur:
+        cur.execute("SELECT to_regclass(%s);", (table_name,))
+        exists = cur.fetchone()[0]
+        if not exists:
+            logger.info(f"Создание таблицы {table_name}")
+            cur.execute(f"""
+                CREATE TABLE {table_name} (
+                    id SERIAL,
+                    data JSONB NOT NULL,
+                    month_part DATE NOT NULL,
+                    PRIMARY KEY (id, month_part)
+                )
+                PARTITION BY RANGE (month_part);
+            """)
+            conn.commit()
+            logger.info(f"Таблица {table_name} успешно создана.")
 
 
 def ensure_partition_exists(conn, target_id, month_part):
@@ -78,30 +85,28 @@ def ensure_partition_exists(conn, target_id, month_part):
     month_part в формате "YYYY-MM".
     """
     table_name = get_table_name(target_id)
+    start_date = datetime.strptime(month_part, '%Y-%m').date()  # 1-е число месяца
     partition_name = f"{table_name}_{month_part.replace('-', '_')}"
 
-    check_sql = text("SELECT to_regclass(:partition_name);")
-    exists = conn.execute(check_sql, {"partition_name": partition_name}).scalar()
+    with conn.cursor() as cur:
+        cur.execute("SELECT to_regclass(%s);", (partition_name,))
+        exists = cur.fetchone()[0]
 
-    if not exists:
-        logger.info(f"Создание партиции {partition_name}")
-        start_date = datetime.strptime(month_part, '%Y-%m').date()
+        if not exists:
+            logger.info(f"Создание партиции {partition_name}")
+            # Определяем границы диапазона
+            if start_date.month == 12:
+                end_date = datetime(start_date.year + 1, 1, 1).date()
+            else:
+                end_date = datetime(start_date.year, start_date.month + 1, 1).date()
 
-        if start_date.month == 12:
-            end_date = datetime(start_date.year + 1, 1, 1).date()
-        else:
-            end_date = datetime(start_date.year, start_date.month + 1, 1).date()
-
-        create_partition_sql = text(f"""
-            CREATE TABLE {partition_name}
-            PARTITION OF {table_name}
-            FOR VALUES FROM (:start_date) TO (:end_date);
-        """)
-        conn.execute(create_partition_sql, {
-            "start_date": start_date,
-            "end_date": end_date
-        })
-        logger.info(f"Партиция {partition_name} успешно создана.")
+            cur.execute(f"""
+                CREATE TABLE {partition_name}
+                PARTITION OF {table_name}
+                FOR VALUES FROM (%s) TO (%s);
+            """, (start_date, end_date))
+            conn.commit()
+            logger.info(f"Партиция {partition_name} успешно создана.")
 
 
 def insert_message(conn, target_id, month_part, message_data):
@@ -110,19 +115,23 @@ def insert_message(conn, target_id, month_part, message_data):
     Если в message_data нет "month_part", используем текущий месяц.
     """
     table_name = get_table_name(target_id)
-    month_part_str = message_data.get("month_part") or datetime.now().strftime('%Y-%m')
+    month_part_str = message_data.get("month_part")
+    if not month_part_str:
+        month_part_str = datetime.now().strftime('%Y-%m')
     month_part_date = datetime.strptime(month_part_str, '%Y-%m').date()
 
-    insert_sql = text(f"""
-        INSERT INTO {table_name} (data, month_part)
-        VALUES (:data, :month_part)
-    """)
-
-    conn.execute(insert_sql, {
-        "data": json.dumps(message_data),
-        "month_part": month_part_date
-    })
-    logger.info(f"Сообщение вставлено в {table_name}")
+    with conn.cursor() as cur:
+        try:
+            cur.execute(f"""
+                INSERT INTO {table_name} (data, month_part)
+                VALUES (%s, %s)
+            """, (json.dumps(message_data), month_part_date))
+            conn.commit()
+            logger.info(f"Сообщение вставлено в {table_name}")
+        except Exception as e:
+            conn.rollback()
+            logger.error(f"Ошибка при вставке сообщения в {table_name}: {e}")
+            raise
 
 
 def process_single_message(conn, raw_json):
@@ -134,6 +143,7 @@ def process_single_message(conn, raw_json):
     4) Вставляем сообщение
     """
     data = json.loads(raw_json)
+
     target_id = data.get("target_id")
     month_part = data.get("month_part")
 
@@ -151,7 +161,8 @@ def run_consumer():
     Потребитель Kafka, читающий сообщения и раскладывающий их в разные партиционированные таблицы.
     При ошибке соединения к БД делаем reconnect и ПОВТОРЯЕМ вставку того же сообщения.
     """
-    engine = create_engine_connection()
+    conn = create_connection()
+
     consumer = KafkaConsumer(
         KAFKA_TOPIC,
         bootstrap_servers=[KAFKA_BOOTSTRAP_SERVERS],
@@ -160,7 +171,6 @@ def run_consumer():
         group_id=KAFKA_GROUP_ID,
         value_deserializer=lambda m: m.decode('utf-8')
     )
-
     logger.info(f"Подписка на Kafka topic: {KAFKA_TOPIC}")
 
     try:
@@ -173,31 +183,31 @@ def run_consumer():
 
             while True:
                 try:
-                    # SQLAlchemy "begin()" даёт транзакцию с автокоммитом при успехе
-                    with engine.begin() as conn:
-                        process_single_message(conn, raw_json)
+                    process_single_message(conn, raw_json)
                     break  # успешная вставка — выходим из цикла while
-
                 except json.JSONDecodeError:
                     logger.error("Не удалось декодировать JSON в сообщении.")
-                    break  # Бессмысленно повторять, JSON «битый»
-
+                    break  # Нет смысла повторять, JSON «битый»
                 except (OperationalError, InterfaceError) as db_err:
-                    # Ошибка соединения к БД
                     logger.error(f"Проблемы с соединением к БД: {db_err}", exc_info=True)
+                    # Закроем коннект и пересоздадим
+                    try:
+                        conn.close()
+                    except:
+                        pass
+
+                    # Увеличим счётчик попыток
                     retry_count += 1
                     if retry_count <= max_retries:
-                        logger.info(f"Пробуем переподключиться (попытка #{retry_count})...")
-                        engine.dispose()  # закрываем старый Engine
-                        engine = create_engine_connection()
-                        continue
+                        logger.info(f"Пробуем переподключиться и повторить (попытка #{retry_count})...")
+                        conn = create_connection()
+                        continue  # повторить ту же вставку
                     else:
-                        logger.error("Превышено число повторных попыток. Пропускаем сообщение.")
+                        logger.error("Превышено число повторных попыток для одного сообщения. Пропускаем.")
                         break
-
                 except Exception as e:
                     logger.error(f"Ошибка при обработке сообщения: {e}", exc_info=True)
-                    # Это не ошибка соединения, значит, повторять бессмысленно
+                    # Это не ошибка соединения, значит, повторять бессмысленно (или логика индивидуальная)
                     break
 
     except KeyboardInterrupt:
@@ -205,9 +215,8 @@ def run_consumer():
     except Exception as e:
         logger.error(f"Неизвестная ошибка в цикле consumer: {e}", exc_info=True)
     finally:
-        consumer.close()
-        engine.dispose()
-        logger.info("Консьюмер и соединение с БД закрыты.")
+        conn.close()
+        logger.info("Соединение с БД закрыто.")
 
 
 if __name__ == "__main__":

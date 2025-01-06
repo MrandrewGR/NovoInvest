@@ -5,6 +5,7 @@ import json
 import logging
 import psycopg2
 import psycopg2.extras
+from psycopg2 import OperationalError, InterfaceError
 from datetime import datetime
 from kafka import KafkaConsumer
 
@@ -46,8 +47,8 @@ def create_connection():
 def get_table_name(target_id):
     """
     Преобразование target_id в допустимое имя таблицы.
-    Например, для отрицательного ID -100123456
-    будет 'messages_neg100123456', для положительного 'messages_1234'.
+    Для отрицательного: -100123456 => messages_neg100123456
+    Для положительного: 123456 => messages_123456
     """
     if target_id < 0:
         return f"messages_neg{abs(target_id)}"
@@ -56,8 +57,8 @@ def get_table_name(target_id):
 
 def ensure_table_exists(conn, target_id):
     """
-    Создаём "главную" таблицу под данный target_id, если она не существует,
-    с партиционированием по RANGE (month_part).
+    Создаём "родительскую" партиционированную таблицу под данный target_id, если она не существует.
+    PRIMARY KEY включает month_part.
     """
     table_name = get_table_name(target_id)
     with conn.cursor() as cur:
@@ -84,9 +85,7 @@ def ensure_partition_exists(conn, target_id, month_part):
     month_part в формате "YYYY-MM".
     """
     table_name = get_table_name(target_id)
-    # Преобразуем 'YYYY-MM' в дату первого дня месяца
-    start_date = datetime.strptime(month_part, '%Y-%m').date()
-    # Определяем название партиции
+    start_date = datetime.strptime(month_part, '%Y-%m').date()  # 1-е число месяца
     partition_name = f"{table_name}_{month_part.replace('-', '_')}"
 
     with conn.cursor() as cur:
@@ -113,14 +112,12 @@ def ensure_partition_exists(conn, target_id, month_part):
 def insert_message(conn, target_id, month_part, message_data):
     """
     Вставляет сообщение в соответствующую таблицу и партицию.
-    month_part берём из 'month_part' внутри message_data.
+    Если в message_data нет "month_part", используем текущий месяц.
     """
     table_name = get_table_name(target_id)
-    month_part_str = message_data.get("month_part")  # строка в формате "YYYY-MM"
+    month_part_str = message_data.get("month_part")
     if not month_part_str:
-        # fallback: ставим текущий месяц
         month_part_str = datetime.now().strftime('%Y-%m')
-    # Преобразуем в дату первого дня месяца
     month_part_date = datetime.strptime(month_part_str, '%Y-%m').date()
 
     with conn.cursor() as cur:
@@ -137,15 +134,35 @@ def insert_message(conn, target_id, month_part, message_data):
             raise
 
 
+def process_single_message(conn, raw_json):
+    """
+    Обработка одного сообщения (string в формате JSON).
+    1) Парсим JSON
+    2) Проверяем/создаём таблицу
+    3) Проверяем/создаём партицию
+    4) Вставляем сообщение
+    """
+    data = json.loads(raw_json)
+
+    target_id = data.get("target_id")
+    month_part = data.get("month_part")
+
+    if target_id is None or month_part is None:
+        logger.warning(f"Пропускаем сообщение без target_id или month_part: {data}")
+        return
+
+    ensure_table_exists(conn, target_id)
+    ensure_partition_exists(conn, target_id, month_part)
+    insert_message(conn, target_id, month_part, data)
+
+
 def run_consumer():
     """
-    Потребитель Kafka, читающий сообщения и сохраняющий их в разные таблицы
-    (зависящие от target_id) с партиционированием по month_part.
+    Потребитель Kafka, читающий сообщения и раскладывающий их в разные партиционированные таблицы.
+    При ошибке соединения к БД делаем reconnect и ПОВТОРЯЕМ вставку того же сообщения.
     """
-    # Подключаемся к БД
     conn = create_connection()
 
-    # Настраиваем KafkaConsumer
     consumer = KafkaConsumer(
         KAFKA_TOPIC,
         bootstrap_servers=[KAFKA_BOOTSTRAP_SERVERS],
@@ -158,30 +175,40 @@ def run_consumer():
 
     try:
         for message in consumer:
-            try:
-                raw_json = message.value  # уже str после value_deserializer
-                data = json.loads(raw_json)
+            raw_json = message.value
 
-                target_id = data.get("target_id")
-                month_part = data.get("month_part")
+            # Будем пытаться до 2 раз вставить одно и то же сообщение
+            retry_count = 0
+            max_retries = 2
 
-                if target_id is None or month_part is None:
-                    logger.warning(f"Пропускаем сообщение без target_id/month_part: {data}")
-                    continue
+            while True:
+                try:
+                    process_single_message(conn, raw_json)
+                    break  # успешная вставка — выходим из цикла while
+                except json.JSONDecodeError:
+                    logger.error("Не удалось декодировать JSON в сообщении.")
+                    break  # Нет смысла повторять, JSON «битый»
+                except (OperationalError, InterfaceError) as db_err:
+                    logger.error(f"Проблемы с соединением к БД: {db_err}", exc_info=True)
+                    # Закроем коннект и пересоздадим
+                    try:
+                        conn.close()
+                    except:
+                        pass
 
-                # 1. Гарантируем, что таблица под этот target_id есть
-                ensure_table_exists(conn, target_id)
-
-                # 2. Гарантируем, что партиция за этот month_part есть
-                ensure_partition_exists(conn, target_id, month_part)
-
-                # 3. Вставляем сообщение
-                insert_message(conn, target_id, month_part, data)
-
-            except json.JSONDecodeError:
-                logger.error("Не удалось декодировать JSON в сообщении.")
-            except Exception as e:
-                logger.error(f"Ошибка при обработке сообщения: {e}", exc_info=True)
+                    # Увеличим счётчик попыток
+                    retry_count += 1
+                    if retry_count <= max_retries:
+                        logger.info(f"Пробуем переподключиться и повторить (попытка #{retry_count})...")
+                        conn = create_connection()
+                        continue  # повторить ту же вставку
+                    else:
+                        logger.error("Превышено число повторных попыток для одного сообщения. Пропускаем.")
+                        break
+                except Exception as e:
+                    logger.error(f"Ошибка при обработке сообщения: {e}", exc_info=True)
+                    # Это не ошибка соединения, значит, повторять бессмысленно (или логика индивидуальная)
+                    break
 
     except KeyboardInterrupt:
         logger.info("Потребитель остановлен пользователем.")

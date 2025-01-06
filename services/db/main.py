@@ -12,10 +12,10 @@ logging.basicConfig(
 
 def ensure_database_exists(dbname, user, password, host, port):
     """
-    Подключается к базе 'postgres' и создаёт dbname, если её нет.
+    Подключается к базе 'postgres' (системной) и создаёт dbname, если её нет.
     """
     conn = psycopg2.connect(
-        dbname='postgres',
+        dbname='postgres',  # Подключаемся к «системной» БД
         user=user,
         password=password,
         host=host,
@@ -39,14 +39,14 @@ def create_common_objects(conn):
     схемы или базовые таблицы. При необходимости.
     """
     with conn.cursor() as cur:
-        # Пример: создаём схему "public" (обычно уже есть) или свою "tg_schema"
-        # cur.execute("CREATE SCHEMA IF NOT EXISTS tg_schema;")
+        # Пример: если нужно, создаём какую-то схему:
+        # cur.execute("CREATE SCHEMA IF NOT EXISTS my_schema;")
         # conn.commit()
         pass
 
 def main():
     """
-    Пример запуска подготовки базы данных: создаём БД, потом создаём общие объекты.
+    Подготовка БД: создаём (если нет) и инициализируем общие объекты.
     """
     # Считываем переменные окружения
     db_host = os.environ.get("DB_HOST", "postgres")
@@ -55,16 +55,16 @@ def main():
     db_password = os.environ.get("DB_PASSWORD", "postgres")
     db_name = os.environ.get("DB_NAME", "tg_ubot")
 
-    # Шаг 1: Гарантированно убеждаемся, что база данных существует.
+    # 1: Гарантированно убеждаемся, что нужная база данных существует.
     ensure_database_exists(db_name, db_user, db_password, db_host, db_port)
 
-    # Шаг 2: Подключаемся к созданной БД и создаём общие объекты
+    # 2: Подключаемся к созданной БД и создаём общие объекты, если надо
     conn = psycopg2.connect(
-        host=db_host,
-        port=db_port,
+        dbname=db_name,
         user=db_user,
         password=db_password,
-        dbname=db_name
+        host=db_host,
+        port=db_port
     )
     try:
         create_common_objects(conn)

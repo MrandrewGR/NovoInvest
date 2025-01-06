@@ -1,3 +1,5 @@
+-- services/db/init-db/init.sql
+
 -- Создание таблицы messages
 CREATE TABLE IF NOT EXISTS messages (
     id SERIAL PRIMARY KEY,

@@ -21,4 +21,5 @@ RUN chmod +x /app/wait-for-services.sh
 # 2) Запускаем main.py (создаст базу, если нет)
 # 3) alembic upgrade head (накатит миграции)
 # 4) process_messages.py (основной код)
-CMD ["/app/wait-for-services.sh", "bash", "-c", "python main.py && alembic upgrade head && python process_messages.py"]
+CMD ["/app/wait-for-services.sh", "bash", "-c", "alembic upgrade head && python main.py && python process_messages.py"]
+

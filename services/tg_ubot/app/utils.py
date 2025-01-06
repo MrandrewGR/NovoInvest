@@ -29,8 +29,21 @@ def get_delay_settings(delay_type: str):
 
     # Переход к ночи
     if transition_start_to_night <= current_time_only < transition_end_to_night:
-        start_dt = datetime.combine(current_time.date(), transition_start_to_night)
-        end_dt = datetime.combine(current_time.date(), transition_end_to_night)
+        # Заменяем часы и минуты current_time, сохраняя таймзону:
+        start_dt = current_time.replace(
+            hour=transition_start_to_night.hour,
+            minute=transition_start_to_night.minute,
+            second=0,
+            microsecond=0
+        )
+
+        end_dt = current_time.replace(
+            hour=transition_end_to_night.hour,
+            minute=transition_end_to_night.minute,
+            second=0,
+            microsecond=0
+        )
+
         total_seconds = (end_dt - start_dt).total_seconds()
         elapsed_seconds = (current_time - start_dt).total_seconds()
         fraction = elapsed_seconds / total_seconds

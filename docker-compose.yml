@@ -24,8 +24,9 @@ services:
     container_name: kafka
     depends_on:
       - zookeeper
-    ports:
-      - "9092:9092"
+    # Внешние подключения не нужны, поэтому
+    # ports:
+    #   - "9092:9092"
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
@@ -42,6 +43,7 @@ services:
       interval: 15s
       timeout: 10s
       retries: 10
+
 
   postgres:
     image: postgres:15-alpine

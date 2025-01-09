@@ -1,4 +1,5 @@
 # File location: services/tg_ubot/app/config.py
+
 from pydantic import BaseSettings
 from typing import List
 

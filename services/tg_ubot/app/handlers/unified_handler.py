@@ -6,7 +6,7 @@ from telethon import TelegramClient, events
 from telethon.tl.types import (
     Message,
     MessageEntityUrl,
-    MessageEntityTextUrl  # <-- Добавили импорт типов
+    MessageEntityTextUrl
 )
 from app.config import settings
 from app.utils import human_like_delay, get_delay_settings, serialize_message, ensure_dir
@@ -14,7 +14,7 @@ import os
 
 logger = logging.getLogger("unified_handler")
 
-def register_unified_handler(client, message_buffer, counter, userbot_active):
+def register_unified_handler(client, message_buffer, counter, userbot_active, chat_id_to_target_id: dict):
     """
     Регистрирует единый обработчик для всех "новых" и "изменённых" сообщений
     в списке целевых chat_id/каналов.
@@ -26,15 +26,15 @@ def register_unified_handler(client, message_buffer, counter, userbot_active):
     async def on_new_message(event):
         if not userbot_active.is_set():
             return
-        await process_message_event(event, "new_message", message_buffer, counter, client)
+        await process_message_event(event, "new_message", message_buffer, counter, client, chat_id_to_target_id)
 
     @client.on(events.MessageEdited(chats=target_ids))
     async def on_edited_message(event):
         if not userbot_active.is_set():
             return
-        await process_message_event(event, "edited_message", message_buffer, counter, client)
+        await process_message_event(event, "edited_message", message_buffer, counter, client, chat_id_to_target_id)
 
-async def process_message_event(event, event_type, message_buffer, counter, client: TelegramClient):
+async def process_message_event(event, event_type, message_buffer, counter, client: TelegramClient, chat_id_to_target_id: dict):
     """
     Обработка входящего сообщения/редактированного сообщения.
     Собираем максимальный объём информации, сохраняем медиа (если есть),
@@ -85,7 +85,12 @@ async def process_message_event(event, event_type, message_buffer, counter, clie
         except Exception as e:
             logger.error(f"Не удалось получить информацию о чате/канале: {e}")
 
-        target_id = chat_info.get("chat_id")
+        chat_id = chat_info.get("chat_id")
+        target_id = chat_id_to_target_id.get(chat_id)
+        if target_id is None:
+            logger.warning(f"Не найден target_id для chat_id {chat_id}")
+            target_id = "unknown"  # Можно установить значение по умолчанию или обработать иначе
+
         month_part = msg.date.strftime('%Y-%m')
 
         # Собираем реакции (если Telethon поддерживает msg.reactions)
@@ -165,7 +170,7 @@ async def process_message_event(event, event_type, message_buffer, counter, clie
             **edited_info,
             "sender": sender_info,
             "chat": chat_info,
-            "target_id": target_id
+            "target_id": target_id  # Устанавливаем target_id на основе chat_id
         }
 
         # Отправляем в общий topic tg_ubot_output (или тот, что задан в .env)
@@ -173,7 +178,7 @@ async def process_message_event(event, event_type, message_buffer, counter, clie
 
         # Складываем в буфер (тема + словарь)
         await message_buffer.put((kafka_topic, message_data))
-        logger.info(f"[unified_handler] Обработано сообщение {msg.id} из {chat_info.get('chat_title','')}")
+        logger.info(f"[unified_handler] Обработано сообщение {msg.id} из {chat_info.get('chat_title','')} с target_id {target_id}")
     except Exception as e:
         logger.exception(f"Ошибка в process_message_event: {e}")
 

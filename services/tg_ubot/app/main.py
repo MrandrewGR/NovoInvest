@@ -1,3 +1,5 @@
+# services/tg_ubot/app/main.py
+
 import asyncio
 import logging
 import os
@@ -33,6 +35,35 @@ async def run_userbot():
     kafka_producer = None
     kafka_consumer = None
     shutdown_event = asyncio.Event()
+
+    # Инициализируем сопоставление chat_id -> target_id
+    chat_id_to_target_id = {}
+    try:
+        await client.start()
+        if not await client.is_user_authorized():
+            logger.error("Telegram клиент не авторизован. Проверьте session_file.")
+            shutdown_event.set()
+            return
+
+        # Получаем информацию о целевых чатах и генерируем target_id
+        for chat_id in settings.TELEGRAM_TARGET_IDS:
+            try:
+                chat = await client.get_entity(chat_id)
+                # Генерируем target_id на основе названия чата или chat_id
+                target_id = chat.title if hasattr(chat, 'title') and chat.title else str(chat_id)
+                chat_id_to_target_id[chat_id] = target_id
+                logger.info(f"Сопоставление создано: chat_id={chat_id} → target_id={target_id}")
+            except Exception as e:
+                logger.error(f"Не удалось получить информацию о чате с chat_id={chat_id}: {e}")
+                chat_id_to_target_id[chat_id] = "unknown"
+
+        me = await client.get_me()
+        logger.info(f"Userbot запущен как: @{me.username} (ID: {me.id})")
+
+    except Exception as e:
+        logger.exception(f"Ошибка при инициализации сопоставления чатов: {e}")
+        shutdown_event.set()
+        return
 
     async def initialize_kafka_producer():
         nonlocal kafka_producer
@@ -145,18 +176,8 @@ async def run_userbot():
     counter = MessageCounter(client)
 
     try:
-        # Запускаем телеграм-клиент без запроса ввода
-        await client.start()
-        if not await client.is_user_authorized():
-            logger.error("Telegram клиент не авторизован. Проверьте session_file.")
-            shutdown_event.set()
-            return
-
-        me = await client.get_me()
-        logger.info(f"Userbot запущен как: @{me.username} (ID: {me.id})")
-
-        # Регистрируем единый обработчик для всех входящих сообщений
-        register_unified_handler(client, message_buffer, counter, userbot_active)
+        # Регистрируем единый обработчик для всех входящих сообщений, передавая сопоставление
+        register_unified_handler(client, message_buffer, counter, userbot_active, chat_id_to_target_id)
 
         # Создаём задачи: продьюсер, консумер (по необходимости) и сам Telethon
         producer = asyncio.create_task(producer_task())

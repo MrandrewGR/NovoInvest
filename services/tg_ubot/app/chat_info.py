@@ -31,6 +31,10 @@ class ChatInfo:
                 chat_username = self.get_chat_username(entity)
                 name_or_username = self.get_name_or_username(entity)
 
+                if chat_id is None:
+                    logger.warning(f"Не удалось получить chat_id для ID {original_id}")
+                    continue
+
                 chat_data = {
                     "chat_id": chat_id,
                     "chat_title": chat_title,
@@ -91,6 +95,7 @@ async def get_all_chats_info(client: TelegramClient):
     """
     chat_info = ChatInfo(client, settings.TELEGRAM_TARGET_IDS)
     await chat_info.fetch_chat_info()
+    logger.debug(f"Все чаты: {chat_info.get_chats_info()}")
     return chat_info.get_chats_info()
 
 

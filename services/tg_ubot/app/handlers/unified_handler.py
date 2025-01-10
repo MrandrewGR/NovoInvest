@@ -64,6 +64,10 @@ async def process_message_event(event, event_type, message_buffer, counter, clie
         chat_id = msg.chat_id
         chat_info = chats_info.get(chat_id, {})
 
+        if not chat_info:
+            logger.warning(f"Информация о чате для chat_id {chat_id} не найдена. Пропускаем сообщение.")
+            return
+
         # Пробуем получить информацию об отправителе
         sender_info = {}
         try:
@@ -153,9 +157,9 @@ async def process_message_event(event, event_type, message_buffer, counter, clie
             "date": msg.date.isoformat(),
             "month_part": month_part,
 
-            "text_plain": raw_text,           # <--- «чистый» текст
-            "text_markdown": text_markdown,   # <--- markdown-версия
-            "links": links,                    # <--- список словарей c offset/length/url/display_text
+            "text_plain": raw_text,  # <--- «чистый» текст
+            "text_markdown": text_markdown,  # <--- markdown-версия
+            "links": links,  # <--- список словарей c offset/length/url/display_text
 
             "media_path": media_path,
             "reactions": reactions_info,
@@ -174,7 +178,7 @@ async def process_message_event(event, event_type, message_buffer, counter, clie
 
         # Складываем в буфер (тема + словарь)
         await message_buffer.put((kafka_topic, message_data))
-        logger.info(f"[unified_handler] Обработано сообщение {msg.id} из {chat_info.get('name_or_username','')}")
+        logger.info(f"[unified_handler] Обработано сообщение {msg.id} из {chat_info.get('name_or_username', '')}")
 
     except Exception as e:
         logger.exception(f"Ошибка в process_message_event: {e}")
@@ -207,7 +211,7 @@ def build_markdown_and_links(raw_text: str, entities: list):
         # Длина текущего entity
         e_length = entity.length
         # Фрагмент текста, на который указывает entity
-        display_text = raw_text[entity.offset : entity.offset + e_length]
+        display_text = raw_text[entity.offset: entity.offset + e_length]
 
         if isinstance(entity, MessageEntityUrl):
             # URL, который виден напрямую в тексте

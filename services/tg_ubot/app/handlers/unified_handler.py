@@ -6,7 +6,7 @@ from telethon import TelegramClient, events
 from telethon.tl.types import (
     Message,
     MessageEntityUrl,
-    MessageEntityTextUrl  # <-- Добавили импорт типов
+    MessageEntityTextUrl
 )
 from app.config import settings
 from app.utils import human_like_delay, get_delay_settings, serialize_message, ensure_dir
@@ -27,12 +27,14 @@ def register_unified_handler(client, message_buffer, counter, userbot_active, ch
     async def on_new_message(event):
         if not userbot_active.is_set():
             return
+          
         await process_message_event(event, "new_message", message_buffer, counter, client, chats_info)
 
     @client.on(events.MessageEdited(chats=target_ids))
     async def on_edited_message(event):
         if not userbot_active.is_set():
             return
+          
         await process_message_event(event, "edited_message", message_buffer, counter, client, chats_info)
 
 
@@ -174,10 +176,8 @@ async def process_message_event(event, event_type, message_buffer, counter, clie
 
         # Складываем в буфер (тема + словарь)
         await message_buffer.put((kafka_topic, message_data))
-        logger.info(f"[unified_handler] Обработано сообщение {msg.id} из {chat_info.get('name_or_username','')}")
 
-    except Exception as e:
-        logger.exception(f"Ошибка в process_message_event: {e}")
+        logger.info(f"[unified_handler] Обработано сообщение {msg.id} из {chat_info.get('name_or_username','')}")
 
 
 def build_markdown_and_links(raw_text: str, entities: list):

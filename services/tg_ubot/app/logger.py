@@ -15,14 +15,15 @@ def setup_logging():
         ]
     )
 
-    # Список логгеров, которым необходимо добавить дополнительные обработчики (если нужно)
+    # Список логгеров, которым необходимо добавить дополнительные обработчики
     module_loggers = [
         "unified_handler",
         "kafka_producer",
         "kafka_consumer",
         "utils",
         "userbot",
-        "state"
+        "state",
+        "chat_info"  # Добавлено для логирования chat_info
     ]
 
     for logger_name in module_loggers:

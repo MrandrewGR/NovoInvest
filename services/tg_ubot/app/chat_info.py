@@ -1,4 +1,4 @@
-# File location: services/tg_ubot/app/chat_info.py
+# services/tg_ubot/app/chat_info.py
 
 import asyncio
 import logging
@@ -26,16 +26,21 @@ class ChatInfo:
         Получает информацию о каждом целевом ID и заполняет chats_info.
         """
         for original_id in self.target_ids:
+            logger.debug(f"Обработка target_id={original_id}")
             try:
                 entity = await self.client.get_entity(original_id)
+                logger.debug(f"Получена сущность для ID {original_id}: {entity}")
+
                 chat_id, entity_type = self.get_chat_id_and_type(entity)
-                chat_title = self.get_chat_title(entity)
-                chat_username = self.get_chat_username(entity)
-                name_or_username = self.get_name_or_username(entity)
+                logger.debug(f"chat_id={chat_id}, entity_type={entity_type} для ID {original_id}")
 
                 if chat_id is None:
                     logger.warning(f"Не удалось получить chat_id для ID {original_id} (entity_type={entity_type})")
                     continue
+
+                chat_title = self.get_chat_title(entity)
+                chat_username = self.get_chat_username(entity)
+                name_or_username = self.get_name_or_username(entity)
 
                 chat_data = {
                     "chat_id": chat_id,
@@ -53,7 +58,7 @@ class ChatInfo:
                     logger.debug("Информация о chat_id=7079551 успешно добавлена в chats_info.")
 
             except RPCError as e:
-                logger.error(f"Ошибка при получении информации для ID {original_id}: {e}")
+                logger.error(f"RPCError при получении информации для ID {original_id}: {e}")
             except Exception as e:
                 logger.exception(f"Неизвестная ошибка для ID {original_id}: {e}")
 

@@ -1,4 +1,4 @@
-# services/tg_ubot/app/handlers/unified_handler.py
+# File location: services/tg_ubot/app/handlers/unified_handler.py
 
 import logging
 import asyncio
@@ -14,7 +14,8 @@ import os
 
 logger = logging.getLogger("unified_handler")
 
-def register_unified_handler(client, message_buffer, counter, userbot_active):
+
+def register_unified_handler(client, message_buffer, counter, userbot_active, chats_info):
     """
     Регистрирует единый обработчик для всех "новых" и "изменённых" сообщений
     в списке целевых chat_id/каналов.
@@ -26,15 +27,16 @@ def register_unified_handler(client, message_buffer, counter, userbot_active):
     async def on_new_message(event):
         if not userbot_active.is_set():
             return
-        await process_message_event(event, "new_message", message_buffer, counter, client)
+        await process_message_event(event, "new_message", message_buffer, counter, client, chats_info)
 
     @client.on(events.MessageEdited(chats=target_ids))
     async def on_edited_message(event):
         if not userbot_active.is_set():
             return
-        await process_message_event(event, "edited_message", message_buffer, counter, client)
+        await process_message_event(event, "edited_message", message_buffer, counter, client, chats_info)
 
-async def process_message_event(event, event_type, message_buffer, counter, client: TelegramClient):
+
+async def process_message_event(event, event_type, message_buffer, counter, client: TelegramClient, chats_info):
     """
     Обработка входящего сообщения/редактированного сообщения.
     Собираем максимальный объём информации, сохраняем медиа (если есть),
@@ -42,7 +44,7 @@ async def process_message_event(event, event_type, message_buffer, counter, clie
     """
     try:
         msg: Message = event.message
-        # Задержка "по-человечески"
+        # Задержка для избежания бана
         min_delay, max_delay = get_delay_settings("chat")
         await human_like_delay(min_delay, max_delay)
 
@@ -58,6 +60,10 @@ async def process_message_event(event, event_type, message_buffer, counter, clie
             except Exception as e:
                 logger.error(f"Не удалось скачать медиа: {e}")
 
+        # Используем pre-fetched chat_info
+        chat_id = msg.chat_id
+        chat_info = chats_info.get(chat_id, {})
+
         # Пробуем получить информацию об отправителе
         sender_info = {}
         try:
@@ -72,20 +78,7 @@ async def process_message_event(event, event_type, message_buffer, counter, clie
         except Exception as e:
             logger.error(f"Не удалось получить информацию об отправителе: {e}")
 
-        # Пробуем получить информацию о чате/канале
-        chat_info = {}
-        try:
-            chat = await msg.get_chat()
-            if chat:
-                chat_info = {
-                    "chat_id": getattr(chat, "id", None),
-                    "chat_title": getattr(chat, "title", ""),
-                    "chat_username": getattr(chat, "username", "")
-                }
-        except Exception as e:
-            logger.error(f"Не удалось получить информацию о чате/канале: {e}")
-
-        target_id = chat_info.get("chat_id")
+        target_id = chat_info.get("target_id")
         month_part = msg.date.strftime('%Y-%m')
 
         # Собираем реакции (если Telethon поддерживает msg.reactions)
@@ -153,9 +146,9 @@ async def process_message_event(event, event_type, message_buffer, counter, clie
             "date": msg.date.isoformat(),
             "month_part": month_part,
 
-            "text_plain": raw_text,     # <--- «чистый» текст
-            "text_markdown": text_markdown,  # <--- markdown-версия
-            "links": links,            # <--- список словарей c offset/length/url/display_text
+            "text_plain": raw_text,           # <--- «чистый» текст
+            "text_markdown": text_markdown,   # <--- markdown-версия
+            "links": links,                    # <--- список словарей c offset/length/url/display_text
 
             "media_path": media_path,
             "reactions": reactions_info,
@@ -165,7 +158,8 @@ async def process_message_event(event, event_type, message_buffer, counter, clie
             **edited_info,
             "sender": sender_info,
             "chat": chat_info,
-            "target_id": target_id
+            "target_id": target_id,
+            "name_uname" : chat_info.get("name_or_username", target_id)
         }
 
         # Отправляем в общий topic tg_ubot_output (или тот, что задан в .env)
@@ -173,9 +167,11 @@ async def process_message_event(event, event_type, message_buffer, counter, clie
 
         # Складываем в буфер (тема + словарь)
         await message_buffer.put((kafka_topic, message_data))
-        logger.info(f"[unified_handler] Обработано сообщение {msg.id} из {chat_info.get('chat_title','')}")
+        logger.info(f"[unified_handler] Обработано сообщение {msg.id} из {chat_info.get('name_or_username','')}")
+
     except Exception as e:
         logger.exception(f"Ошибка в process_message_event: {e}")
+
 
 def build_markdown_and_links(raw_text: str, entities: list):
     """

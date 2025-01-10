@@ -1,3 +1,5 @@
+# File location: services/tg_ubot/app/main.py
+
 import asyncio
 import logging
 import os
@@ -13,9 +15,11 @@ from .kafka_consumer import KafkaMessageConsumer
 from .handlers.unified_handler import register_unified_handler
 from .utils import ensure_dir, human_like_delay
 from .state import MessageCounter
+from .chat_info import get_all_chats_info
 
 MAX_BUFFER_SIZE = 10000
 RECONNECT_INTERVAL = 10
+
 
 async def run_userbot():
     # Убедитесь, что директории для логов и медиа существуют
@@ -152,11 +156,15 @@ async def run_userbot():
             shutdown_event.set()
             return
 
+        # Получаем информацию о чатах
+        chats_info = await get_all_chats_info(client)
+        logger.info(f"Информация о чатах: {chats_info}")
+
         me = await client.get_me()
         logger.info(f"Userbot запущен как: @{me.username} (ID: {me.id})")
 
-        # Регистрируем единый обработчик для всех входящих сообщений
-        register_unified_handler(client, message_buffer, counter, userbot_active)
+        # Регистрируем единый обработчик для всех входящих сообщений, передавая chats_info
+        register_unified_handler(client, message_buffer, counter, userbot_active, chats_info)
 
         # Создаём задачи: продьюсер, консумер (по необходимости) и сам Telethon
         producer = asyncio.create_task(producer_task())
@@ -181,6 +189,7 @@ async def run_userbot():
             await kafka_consumer.close()
             logger.info("Kafka consumer закрыт.")
         logger.info("Сервис tg_ubot завершил работу корректно.")
+
 
 if __name__ == "__main__":
     try:

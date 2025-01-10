@@ -52,9 +52,16 @@ class ChatInfo:
     def get_chat_id(self, entity):
         """
         Получает chat_id из сущности.
+        Для каналов и супергрупп возвращает -100 + entity.id
+        Для обычных чатов возвращает entity.id
         """
         if hasattr(entity, 'id'):
-            return entity.id
+            if getattr(entity, 'broadcast', False) or getattr(entity, 'megagroup', False):
+                # Канал или супергруппа
+                return int(f"-100{entity.id}")
+            else:
+                # Обычный чат
+                return entity.id
         return None
 
     def get_chat_title(self, entity):

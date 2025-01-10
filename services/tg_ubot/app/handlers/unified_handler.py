@@ -6,7 +6,7 @@ from telethon import TelegramClient, events
 from telethon.tl.types import (
     Message,
     MessageEntityUrl,
-    MessageEntityTextUrl  # <-- Добавили импорт типов
+    MessageEntityTextUrl
 )
 from app.config import settings
 from app.utils import human_like_delay, get_delay_settings, serialize_message, ensure_dir
@@ -44,6 +44,9 @@ async def process_message_event(event, event_type, message_buffer, counter, clie
     """
     try:
         msg: Message = event.message
+        # Логирование получения сообщения
+        logger.debug(f"Получено сообщение: {msg.id} из chat_id={msg.chat_id}")
+
         # Задержка для избежания бана
         min_delay, max_delay = get_delay_settings("chat")
         await human_like_delay(min_delay, max_delay)
@@ -57,6 +60,7 @@ async def process_message_event(event, event_type, message_buffer, counter, clie
             ensure_dir(settings.MEDIA_DIR)
             try:
                 media_path = await msg.download_media(file=settings.MEDIA_DIR)
+                logger.debug(f"Медиа сохранено по пути: {media_path}")
             except Exception as e:
                 logger.error(f"Не удалось скачать медиа: {e}")
 
@@ -79,6 +83,7 @@ async def process_message_event(event, event_type, message_buffer, counter, clie
                     "sender_first_name": getattr(sender, "first_name", ""),
                     "sender_last_name": getattr(sender, "last_name", "")
                 }
+                logger.debug(f"Информация об отправителе: {sender_info}")
         except Exception as e:
             logger.error(f"Не удалось получить информацию об отправителе: {e}")
 

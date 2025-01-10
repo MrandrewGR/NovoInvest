@@ -139,6 +139,13 @@ async def process_message_event(event, event_type, message_buffer, counter, clie
         # --- НОВАЯ ЧАСТЬ: извлекаем ссылки + строим markdown-версию
         text_markdown, links = build_markdown_and_links(raw_text, msg.entities or [])
 
+        # Логика для поля name_uname
+        name_or_username = chat_info.get("name_or_username")
+        if not name_or_username or name_or_username == "Unknown":
+            name_uname = target_id
+        else:
+            name_uname = name_or_username
+
         # Формируем итоговый JSON, теперь с text_plain, text_markdown и links
         message_data = {
             "event_type": event_type,
@@ -159,7 +166,7 @@ async def process_message_event(event, event_type, message_buffer, counter, clie
             "sender": sender_info,
             "chat": chat_info,
             "target_id": target_id,
-            "name_uname" : chat_info.get("name_or_username", target_id)
+            "name_uname": name_uname
         }
 
         # Отправляем в общий topic tg_ubot_output (или тот, что задан в .env)

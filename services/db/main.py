@@ -1,4 +1,4 @@
-# services/db/main.py
+# File location: services/db/main.py
 
 import os
 import logging
@@ -9,6 +9,8 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 )
+logger = logging.getLogger("db_main")
+
 
 def ensure_database_exists(dbname, user, password, host, port):
     """
@@ -27,11 +29,17 @@ def ensure_database_exists(dbname, user, password, host, port):
             cur.execute("SELECT 1 FROM pg_database WHERE datname = %s;", (dbname,))
             exists = cur.fetchone()
             if not exists:
-                logging.info(f"Database {dbname} not found. Creating...")
+                logger.info(f"Database {dbname} not found. Creating...")
                 cur.execute(f"CREATE DATABASE {dbname};")
-                logging.info(f"Database {dbname} created successfully!")
+                logger.info(f"Database {dbname} created successfully!")
+            else:
+                logger.info(f"Database {dbname} уже существует.")
+    except Exception as e:
+        logger.error(f"Ошибка при создании базы данных {dbname}: {e}")
+        raise
     finally:
         conn.close()
+
 
 def create_common_objects(conn):
     """
@@ -43,6 +51,7 @@ def create_common_objects(conn):
         # cur.execute("CREATE SCHEMA IF NOT EXISTS my_schema;")
         # conn.commit()
         pass
+
 
 def main():
     """
@@ -68,10 +77,13 @@ def main():
     )
     try:
         create_common_objects(conn)
-        logging.info("Common objects ensured.")
+        logger.info("Common objects ensured.")
+    except Exception as e:
+        logger.error(f"Ошибка при создании общих объектов: {e}")
     finally:
         conn.close()
-        logging.info("Connection closed.")
+        logger.info("Connection closed.")
+
 
 if __name__ == "__main__":
     main()

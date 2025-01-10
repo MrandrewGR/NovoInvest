@@ -73,13 +73,12 @@ class ChatInfo:
 
     def get_chat_id_and_type(self, entity):
         """
-        Возвращает (chat_id, entity_type) для entity.
-         - Если это канал/супергруппа => chat_id = -100 * entity.id
-         - Иначе (обычная группа, пользователь) => chat_id = entity.id
+        Возвращает (chat_id, entity_type):
+          - Если канал или супергруппа => -100 * entity.id
+          - Если обычный чат или пользователь => entity.id
         """
         if isinstance(entity, Channel):
-            # Канал/супергруппа (или иной тип channel)
-            if getattr(entity, 'broadcast', False) or getattr(entity, 'megagroup', False):
+            if entity.broadcast or entity.megagroup:
                 return -100 * entity.id, "ChannelOrSupergroup"
             else:
                 return -100 * entity.id, "UnknownChannelType"

@@ -14,20 +14,18 @@ from .logger import setup_logging
 from .kafka_producer import KafkaMessageProducer
 from .kafka_consumer import KafkaMessageConsumer
 from .handlers.unified_handler import register_unified_handler
-from .utils import ensure_dir, human_like_delay
+from .utils import ensure_dir
 from .state import MessageCounter
 
 MAX_BUFFER_SIZE = 10000
 RECONNECT_INTERVAL = 10
 
 async def run_userbot():
-    # --- Убедитесь, что директории для логов и медиа существуют
     ensure_dir(settings.MEDIA_DIR)
     ensure_dir(os.path.dirname(settings.LOG_FILE))
 
     logger = setup_logging()
 
-    # --- Создаём TelegramClient
     session_file = os.getenv('SESSION_FILE', 'session_name.session')
     client = TelegramClient(session_file, settings.TELEGRAM_API_ID, settings.TELEGRAM_API_HASH)
 
@@ -36,9 +34,9 @@ async def run_userbot():
     kafka_consumer = None
     shutdown_event = asyncio.Event()
 
-    # --- Обработчик сигналов
+    # Сигналы для корректного завершения
     def shutdown_signal_handler(signum, frame):
-        logger.info(f"Получен сигнал завершения ({signum}), инициирование плавного завершения...")
+        logger.info(f"Получен сигнал завершения ({signum}), инициируем плавное завершение...")
         shutdown_event.set()
 
     loop = asyncio.get_running_loop()
@@ -47,6 +45,10 @@ async def run_userbot():
             loop.add_signal_handler(s, shutdown_signal_handler, s, None)
         except NotImplementedError:
             pass
+
+    userbot_active = asyncio.Event()
+    userbot_active.set()
+    counter = MessageCounter(client)
 
     async def handle_instruction(instruction):
         action = instruction.get("action")
@@ -60,11 +62,7 @@ async def run_userbot():
         else:
             logger.warning(f"Неизвестная инструкция: {action}")
 
-    userbot_active = asyncio.Event()
-    userbot_active.set()
-    counter = MessageCounter(client)
-
-    # --- Функции для Kafka
+    # -- Инициализация Kafka
     async def initialize_kafka_producer():
         nonlocal kafka_producer
         while not shutdown_event.is_set():
@@ -74,10 +72,7 @@ async def run_userbot():
                 logger.info("Kafka producer успешно инициализирован.")
                 break
             except Exception as e:
-                logger.error(
-                    f"Не удалось инициализировать Kafka producer: {e}. "
-                    f"Повторная попытка через {RECONNECT_INTERVAL} секунд."
-                )
+                logger.error(f"Не удалось инициализировать Kafka producer: {e}. Повтор через {RECONNECT_INTERVAL}с.")
                 await asyncio.sleep(RECONNECT_INTERVAL)
 
     async def producer_task():
@@ -109,10 +104,7 @@ async def run_userbot():
                 logger.info("Kafka consumer успешно инициализирован.")
                 break
             except Exception as e:
-                logger.error(
-                    f"Не удалось инициализировать Kafka consumer: {e}. "
-                    f"Повторная попытка через {RECONNECT_INTERVAL} секунд."
-                )
+                logger.error(f"Не удалось инициализировать Kafka consumer: {e}. Повтор через {RECONNECT_INTERVAL}с.")
                 await asyncio.sleep(RECONNECT_INTERVAL)
 
     async def consumer_task():
@@ -133,51 +125,60 @@ async def run_userbot():
                     except Exception as e:
                         logger.exception(f"Ошибка при обработке инструкции: {e}")
             except Exception as e:
-                logger.error(f"Ошибка в Kafka consumer: {e}. Повтор через {RECONNECT_INTERVAL} секунд.")
+                logger.error(f"Ошибка в Kafka consumer: {e}. Повтор через {RECONNECT_INTERVAL}с.")
                 kafka_consumer = None
                 await asyncio.sleep(RECONNECT_INTERVAL)
 
-    # --- Основной блок
+    # -- Основной блок
     try:
-        # 1. Запускаем телеграм-клиент
+        # 1. Запускаем userbot
         await client.start()
         if not await client.is_user_authorized():
-            logger.error("Telegram клиент не авторизован. Проверьте session_file.")
+            logger.error("Telegram клиент не авторизован (session_file некорректен?).")
             shutdown_event.set()
             return
 
-        # 2. Принудительно грузим все диалоги, чтобы Telethon знал про пользователей/чаты
-        logger.info("Загружаем диалоги, чтобы Telethon узнал о всех юзерах и чатах...")
-        await client.get_dialogs()  # <-- ВАЖНО
+        # 2. Принудительно загрузим все диалоги, чтобы Telethon видел юзеров и чаты
+        logger.info("Загружаем диалоги (get_dialogs), чтобы Telethon узнал о всех пользователях и чатах...")
+        await client.get_dialogs()
 
-        # 3. Формируем сопоставление chat_id -> «название» (target_id)
-        chat_id_to_target_id = {}
+        # 3. Формируем словарь chat_id -> словарь
+        chat_id_to_data = {}
         for original_id in settings.TELEGRAM_TARGET_IDS:
             try:
                 entity = await client.get_entity(original_id)
-                # Если это Chat/Channel/пользователь, берём .title или fallback
-                chat_title = getattr(entity, 'title', '') or getattr(entity, 'username', '') or str(original_id)
-                chat_id_to_target_id[original_id] = chat_title
-                logger.info(f"Сопоставление для {original_id}: target_id={chat_title}")
+                # попытаемся получить "title" или "username" или fallback
+                chat_title = getattr(entity, "title", "") or getattr(entity, "username", "") or str(original_id)
+                # Сохраним словарь (можно добавить больше полей)
+                chat_id_to_data[original_id] = {
+                    "chat_id": original_id,
+                    "target_id": original_id,
+                    "chat_title": chat_title,
+                }
+                logger.info(f"Сопоставление для {original_id}: {chat_id_to_data[original_id]}")
             except Exception as e:
                 logger.error(f"Не удалось получить entity для {original_id}: {e}")
-                chat_id_to_target_id[original_id] = str(original_id)
+                # Запишем какую-то заглушку, чтобы не падать
+                chat_id_to_data[original_id] = {
+                    "chat_id": original_id,
+                    "target_id": "unknown",
+                    "chat_title": f"Unknown_{original_id}"
+                }
 
         me = await client.get_me()
         logger.info(f"Userbot запущен как: @{me.username} (ID: {me.id})")
 
-        # 4. Регистрируем обработчик сообщений
-        register_unified_handler(client, message_buffer, counter, userbot_active, chat_id_to_target_id)
+        # 4. Регистрируем unified_handler, передавая chat_id_to_data (словарь)
+        register_unified_handler(client, message_buffer, counter, userbot_active, chat_id_to_data)
 
-        # 5. Создаём задачи продьюсера (и консюмера, если нужно)
+        # 5. Создаём задачи: продьюсер, консюмер и сам Telethon
         producer = asyncio.create_task(producer_task())
-        # consumer = asyncio.create_task(consumer_task())
+        # consumer = asyncio.create_task(consumer_task())  # если нужно
 
         # 6. Запускаем всё вместе
         await asyncio.gather(
             client.run_until_disconnected(),
             producer,
-            # consumer,
             shutdown_event.wait()
         )
 

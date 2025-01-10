@@ -40,10 +40,16 @@ class ChatInfo:
                     "chat_title": chat_title,
                     "chat_username": chat_username,
                     "name_or_username": name_or_username,
-                    "target_id": original_id
+                    "target_id": original_id,
+                    "entity_type": self.get_entity_type(entity)
                 }
                 self.chats_info[chat_id] = chat_data
                 logger.info(f"Получена информация для ID {original_id}: {chat_data}")
+
+                # Дополнительный лог для проверки
+                if chat_id == 7079551:
+                    logger.debug("Информация о chat_id=7079551 успешно добавлена в chats_info.")
+
             except RPCError as e:
                 logger.error(f"Ошибка при получении информации для ID {original_id}: {e}")
             except Exception as e:
@@ -52,13 +58,13 @@ class ChatInfo:
     def get_chat_id(self, entity):
         """
         Получает chat_id из сущности.
-        Для каналов и супергрупп возвращает -100 + entity.id
+        Для каналов и супергрупп возвращает -100 * entity.id
         Для обычных чатов возвращает entity.id
         """
         if hasattr(entity, 'id'):
             if getattr(entity, 'broadcast', False) or getattr(entity, 'megagroup', False):
                 # Канал или супергруппа
-                return int(f"-100{entity.id}")
+                return -100 * entity.id
             else:
                 # Обычный чат
                 return entity.id
@@ -80,14 +86,23 @@ class ChatInfo:
         """
         Получает название или username из сущности.
         """
-        if self.get_chat_title(entity):
-            return self.get_chat_title(entity)
-        elif self.get_chat_username(entity):
+        if self.get_chat_username(entity):
             return f"@{self.get_chat_username(entity)}"
         elif hasattr(entity, 'first_name') or hasattr(entity, 'last_name'):
             return f"{getattr(entity, 'first_name', '')} {getattr(entity, 'last_name', '')}".strip()
         else:
             return "Unknown"
+
+    def get_entity_type(self, entity):
+        """
+        Определяет тип сущности: "Channel", "Supergroup" или "Chat".
+        """
+        if getattr(entity, 'broadcast', False):
+            return "Channel"
+        elif getattr(entity, 'megagroup', False):
+            return "Supergroup"
+        else:
+            return "Chat"
 
     def get_chats_info(self):
         """

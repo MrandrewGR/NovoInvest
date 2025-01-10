@@ -64,18 +64,15 @@ class ChatInfo:
 
     def get_chat_id_and_type(self, entity):
         """
-        Получает chat_id и тип сущности из сущности.
-        Для каналов и супергрупп возвращает -100 * entity.id
-        Для обычных чатов возвращает entity.id
-        Для пользователей возвращает entity.id и тип 'User'
+        Храним entity.id «как есть».
         """
         if isinstance(entity, Channel):
             if entity.broadcast:
-                return -100 * entity.id, "Channel"
+                return entity.id, "Channel"
             elif entity.megagroup:
-                return -100 * entity.id, "Supergroup"
+                return entity.id, "Supergroup"
             else:
-                return -100 * entity.id, "UnknownChannelType"
+                return entity.id, "UnknownChannelType"
         elif isinstance(entity, Chat):
             return entity.id, "Chat"
         elif isinstance(entity, User):

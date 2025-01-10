@@ -1,4 +1,4 @@
-# services/tg_ubot/app/main.py
+# File location: services/tg_ubot/app/main.py
 
 import asyncio
 import logging
@@ -15,9 +15,11 @@ from .kafka_consumer import KafkaMessageConsumer
 from .handlers.unified_handler import register_unified_handler
 from .utils import ensure_dir, human_like_delay
 from .state import MessageCounter
+from .chat_info import get_all_chats_info
 
 MAX_BUFFER_SIZE = 10000
 RECONNECT_INTERVAL = 10
+
 
 async def run_userbot():
     # Убедитесь, что директории для логов и медиа существуют
@@ -35,35 +37,6 @@ async def run_userbot():
     kafka_producer = None
     kafka_consumer = None
     shutdown_event = asyncio.Event()
-
-    # Инициализируем сопоставление chat_id -> target_id
-    chat_id_to_target_id = {}
-    try:
-        await client.start()
-        if not await client.is_user_authorized():
-            logger.error("Telegram клиент не авторизован. Проверьте session_file.")
-            shutdown_event.set()
-            return
-
-        # Получаем информацию о целевых чатах и генерируем target_id
-        for chat_id in settings.TELEGRAM_TARGET_IDS:
-            try:
-                chat = await client.get_entity(chat_id)
-                # Генерируем target_id на основе названия чата или chat_id
-                target_id = chat.title if hasattr(chat, 'title') and chat.title else str(chat_id)
-                chat_id_to_target_id[chat_id] = target_id
-                logger.info(f"Сопоставление создано: chat_id={chat_id} → target_id={target_id}")
-            except Exception as e:
-                logger.error(f"Не удалось получить информацию о чате с chat_id={chat_id}: {e}")
-                chat_id_to_target_id[chat_id] = "unknown"
-
-        me = await client.get_me()
-        logger.info(f"Userbot запущен как: @{me.username} (ID: {me.id})")
-
-    except Exception as e:
-        logger.exception(f"Ошибка при инициализации сопоставления чатов: {e}")
-        shutdown_event.set()
-        return
 
     async def initialize_kafka_producer():
         nonlocal kafka_producer
@@ -176,8 +149,22 @@ async def run_userbot():
     counter = MessageCounter(client)
 
     try:
-        # Регистрируем единый обработчик для всех входящих сообщений, передавая сопоставление
-        register_unified_handler(client, message_buffer, counter, userbot_active, chat_id_to_target_id)
+        # Запускаем телеграм-клиент без запроса ввода
+        await client.start()
+        if not await client.is_user_authorized():
+            logger.error("Telegram клиент не авторизован. Проверьте session_file.")
+            shutdown_event.set()
+            return
+
+        # Получаем информацию о чатах
+        chats_info = await get_all_chats_info(client)
+        logger.info(f"Информация о чатах: {chats_info}")
+
+        me = await client.get_me()
+        logger.info(f"Userbot запущен как: @{me.username} (ID: {me.id})")
+
+        # Регистрируем единый обработчик для всех входящих сообщений, передавая chats_info
+        register_unified_handler(client, message_buffer, counter, userbot_active, chats_info)
 
         # Создаём задачи: продьюсер, консумер (по необходимости) и сам Telethon
         producer = asyncio.create_task(producer_task())
@@ -202,6 +189,7 @@ async def run_userbot():
             await kafka_consumer.close()
             logger.info("Kafka consumer закрыт.")
         logger.info("Сервис tg_ubot завершил работу корректно.")
+
 
 if __name__ == "__main__":
     try:

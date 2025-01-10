@@ -1,4 +1,4 @@
-# services/tg_ubot/app/handlers/unified_handler.py
+# File location: services/tg_ubot/app/handlers/unified_handler.py
 
 import logging
 import asyncio
@@ -6,7 +6,7 @@ from telethon import TelegramClient, events
 from telethon.tl.types import (
     Message,
     MessageEntityUrl,
-    MessageEntityTextUrl
+    MessageEntityTextUrl  # <-- Добавили импорт типов
 )
 from app.config import settings
 from app.utils import human_like_delay, get_delay_settings, serialize_message, ensure_dir
@@ -14,7 +14,8 @@ import os
 
 logger = logging.getLogger("unified_handler")
 
-def register_unified_handler(client, message_buffer, counter, userbot_active, chat_id_to_target_id: dict):
+
+def register_unified_handler(client, message_buffer, counter, userbot_active, chats_info):
     """
     Регистрирует единый обработчик для всех "новых" и "изменённых" сообщений
     в списке целевых chat_id/каналов.
@@ -26,15 +27,16 @@ def register_unified_handler(client, message_buffer, counter, userbot_active, ch
     async def on_new_message(event):
         if not userbot_active.is_set():
             return
-        await process_message_event(event, "new_message", message_buffer, counter, client, chat_id_to_target_id)
+        await process_message_event(event, "new_message", message_buffer, counter, client, chats_info)
 
     @client.on(events.MessageEdited(chats=target_ids))
     async def on_edited_message(event):
         if not userbot_active.is_set():
             return
-        await process_message_event(event, "edited_message", message_buffer, counter, client, chat_id_to_target_id)
+        await process_message_event(event, "edited_message", message_buffer, counter, client, chats_info)
 
-async def process_message_event(event, event_type, message_buffer, counter, client: TelegramClient, chat_id_to_target_id: dict):
+
+async def process_message_event(event, event_type, message_buffer, counter, client: TelegramClient, chats_info):
     """
     Обработка входящего сообщения/редактированного сообщения.
     Собираем максимальный объём информации, сохраняем медиа (если есть),
@@ -42,7 +44,7 @@ async def process_message_event(event, event_type, message_buffer, counter, clie
     """
     try:
         msg: Message = event.message
-        # Задержка "по-человечески"
+        # Задержка для избежания бана
         min_delay, max_delay = get_delay_settings("chat")
         await human_like_delay(min_delay, max_delay)
 
@@ -58,6 +60,10 @@ async def process_message_event(event, event_type, message_buffer, counter, clie
             except Exception as e:
                 logger.error(f"Не удалось скачать медиа: {e}")
 
+        # Используем pre-fetched chat_info
+        chat_id = msg.chat_id
+        chat_info = chats_info.get(chat_id, {})
+
         # Пробуем получить информацию об отправителе
         sender_info = {}
         try:
@@ -72,25 +78,7 @@ async def process_message_event(event, event_type, message_buffer, counter, clie
         except Exception as e:
             logger.error(f"Не удалось получить информацию об отправителе: {e}")
 
-        # Пробуем получить информацию о чате/канале
-        chat_info = {}
-        try:
-            chat = await msg.get_chat()
-            if chat:
-                chat_info = {
-                    "chat_id": getattr(chat, "id", None),
-                    "chat_title": getattr(chat, "title", ""),
-                    "chat_username": getattr(chat, "username", "")
-                }
-        except Exception as e:
-            logger.error(f"Не удалось получить информацию о чате/канале: {e}")
-
-        chat_id = chat_info.get("chat_id")
-        target_id = chat_id_to_target_id.get(chat_id)
-        if target_id is None:
-            logger.warning(f"Не найден target_id для chat_id {chat_id}")
-            target_id = "unknown"  # Можно установить значение по умолчанию или обработать иначе
-
+        target_id = chat_info.get("target_id")
         month_part = msg.date.strftime('%Y-%m')
 
         # Собираем реакции (если Telethon поддерживает msg.reactions)
@@ -151,6 +139,13 @@ async def process_message_event(event, event_type, message_buffer, counter, clie
         # --- НОВАЯ ЧАСТЬ: извлекаем ссылки + строим markdown-версию
         text_markdown, links = build_markdown_and_links(raw_text, msg.entities or [])
 
+        # Логика для поля name_uname
+        name_or_username = chat_info.get("name_or_username")
+        if not name_or_username or name_or_username == "Unknown":
+            name_uname = target_id
+        else:
+            name_uname = name_or_username
+
         # Формируем итоговый JSON, теперь с text_plain, text_markdown и links
         message_data = {
             "event_type": event_type,
@@ -158,9 +153,9 @@ async def process_message_event(event, event_type, message_buffer, counter, clie
             "date": msg.date.isoformat(),
             "month_part": month_part,
 
-            "text_plain": raw_text,     # <--- «чистый» текст
-            "text_markdown": text_markdown,  # <--- markdown-версия
-            "links": links,            # <--- список словарей c offset/length/url/display_text
+            "text_plain": raw_text,           # <--- «чистый» текст
+            "text_markdown": text_markdown,   # <--- markdown-версия
+            "links": links,                    # <--- список словарей c offset/length/url/display_text
 
             "media_path": media_path,
             "reactions": reactions_info,
@@ -170,7 +165,8 @@ async def process_message_event(event, event_type, message_buffer, counter, clie
             **edited_info,
             "sender": sender_info,
             "chat": chat_info,
-            "target_id": target_id  # Устанавливаем target_id на основе chat_id
+            "target_id": target_id,
+            "name_uname": name_uname
         }
 
         # Отправляем в общий topic tg_ubot_output (или тот, что задан в .env)
@@ -178,9 +174,11 @@ async def process_message_event(event, event_type, message_buffer, counter, clie
 
         # Складываем в буфер (тема + словарь)
         await message_buffer.put((kafka_topic, message_data))
-        logger.info(f"[unified_handler] Обработано сообщение {msg.id} из {chat_info.get('chat_title','')} с target_id {target_id}")
+        logger.info(f"[unified_handler] Обработано сообщение {msg.id} из {chat_info.get('name_or_username','')}")
+
     except Exception as e:
         logger.exception(f"Ошибка в process_message_event: {e}")
+
 
 def build_markdown_and_links(raw_text: str, entities: list):
     """

@@ -1,4 +1,4 @@
-# File location: services/tg_ubot/app/handlers/unified_handler.py
+# services/tg_ubot/app/handlers/unified_handler.py
 
 import logging
 import asyncio
@@ -44,8 +44,18 @@ async def process_message_event(event, event_type, message_buffer, counter, clie
     """
     try:
         msg: Message = event.message
-        # Логирование получения сообщения
-        logger.debug(f"Получено сообщение: {msg.id} из chat_id={msg.chat_id}")
+        chat_id = msg.chat_id
+        logger.debug(f"Получено сообщение: {msg.id} из chat_id={chat_id}")
+
+        # Логирование всех доступных chat_id
+        logger.debug(f"Доступные chat_id в chats_info: {list(chats_info.keys())}")
+
+        # Проверка наличия chat_id в chats_info
+        if chat_id not in chats_info:
+            logger.warning(f"Информация о чате для chat_id {chat_id} не найдена. Пропускаем сообщение.")
+            return
+        else:
+            logger.debug(f"chat_id={chat_id} присутствует в chats_info.")
 
         # Задержка для избежания бана
         min_delay, max_delay = get_delay_settings("chat")
@@ -65,12 +75,7 @@ async def process_message_event(event, event_type, message_buffer, counter, clie
                 logger.error(f"Не удалось скачать медиа: {e}")
 
         # Используем pre-fetched chat_info
-        chat_id = msg.chat_id
         chat_info = chats_info.get(chat_id, {})
-
-        if not chat_info:
-            logger.warning(f"Информация о чате для chat_id {chat_id} не найдена. Пропускаем сообщение.")
-            return
 
         # Пробуем получить информацию об отправителе
         sender_info = {}

@@ -41,14 +41,15 @@ async def process_message_event(event, event_type, message_buffer, counter, clie
         logger.debug(f"Получено сообщение: {msg.id} из chat_id={msg.chat_id}")
 
         # Логируем список доступных chat_id
-        logger.debug(f"Доступные chat_id в chats_info: {list(chat_id_to_data.keys())}")
+        logger.debug(f"Доступные chat_id в chat_id_to_data: {list(chat_id_to_data.keys())}")
 
         chat_id = msg.chat_id
-        if chat_id not in chat_id_to_data:
+        chat_info = chat_id_to_data.get(chat_id)
+        if not chat_info:
             logger.warning(f"chat_id={chat_id} отсутствует в chat_id_to_data. Пропускаем.")
             return
         else:
-            logger.debug(f"chat_id={chat_id} присутствует в chats_info.")
+            logger.debug(f"chat_id={chat_id} присутствует в chat_id_to_data: {chat_info}")
 
         # Задержка (днём/ночью)
         min_delay, max_delay = get_delay_settings("chat")
@@ -82,16 +83,11 @@ async def process_message_event(event, event_type, message_buffer, counter, clie
         except Exception as e:
             logger.error(f"Не удалось получить информацию об отправителе: {e}")
 
-        # Берём словарь, сохранённый в main.py
-        chat_info = chat_id_to_data.get(chat_id)
-        # например "target_id"
+        # Получаем данные о чате
         target_id = chat_info.get("target_id", "unknown")
         chat_title = chat_info.get("chat_title", "Untitled")
 
-        # Если нужно получить реальное msg.get_chat():
-        #   real_chat = await msg.get_chat()
-
-        # Пример: собираем реакции
+        # Сбор реакций
         reactions_info = []
         if getattr(msg, "reactions", None):
             if msg.reactions.results:
@@ -124,7 +120,8 @@ async def process_message_event(event, event_type, message_buffer, counter, clie
         if msg.forward:
             forward_info["is_forwarded"] = True
             forward_info["forwarded_from"] = str(msg.forward.from_name or "")
-            forward_info["forwarded_from_id"] = getattr(msg.forward.from_id, 'user_id', None)
+            forwarded_from_id = getattr(msg.forward.from_id, 'user_id', None)
+            forward_info["forwarded_from_id"] = forwarded_from_id
             forward_info["forwarded_date"] = (msg.forward.date.isoformat() if msg.forward.date else None)
         else:
             forward_info["is_forwarded"] = False
@@ -139,11 +136,19 @@ async def process_message_event(event, event_type, message_buffer, counter, clie
         # Извлечение ссылок + markdown-версию
         text_markdown, links = build_markdown_and_links(raw_text, msg.entities or [])
 
+        # Получаем name_or_username из chat_info
         name_or_username = chat_info.get("name_or_username")
+        logger.debug(f"name_or_username: {name_or_username}")
+
         if not name_or_username or name_or_username == "Unknown":
             name_uname = target_id
         else:
             name_uname = name_or_username
+
+        # Логирование для отладки
+        logger.debug(f"chat_id: {chat_id}")
+        logger.debug(f"name_or_username: {name_or_username}")
+        logger.debug(f"name_uname: {name_uname}")
 
         # Формируем итоговый JSON
         message_data = {

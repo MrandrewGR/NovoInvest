@@ -16,6 +16,7 @@ from .kafka_consumer import KafkaMessageConsumer
 from .handlers.unified_handler import register_unified_handler
 from .utils import ensure_dir
 from .state import MessageCounter
+from .chat_info import get_all_chats_info
 
 MAX_BUFFER_SIZE = 10000
 RECONNECT_INTERVAL = 10
@@ -142,28 +143,9 @@ async def run_userbot():
         logger.info("Загружаем диалоги (get_dialogs), чтобы Telethon узнал о всех пользователях и чатах...")
         await client.get_dialogs()
 
-        # 3. Формируем словарь chat_id -> словарь
-        chat_id_to_data = {}
-        for original_id in settings.TELEGRAM_TARGET_IDS:
-            try:
-                entity = await client.get_entity(original_id)
-                # попытаемся получить "title" или "username" или fallback
-                chat_title = getattr(entity, "title", "") or getattr(entity, "username", "") or str(original_id)
-                # Сохраним словарь (можно добавить больше полей)
-                chat_id_to_data[original_id] = {
-                    "chat_id": original_id,
-                    "target_id": original_id,
-                    "chat_title": chat_title,
-                }
-                logger.info(f"Сопоставление для {original_id}: {chat_id_to_data[original_id]}")
-            except Exception as e:
-                logger.error(f"Не удалось получить entity для {original_id}: {e}")
-                # Запишем какую-то заглушку, чтобы не падать
-                chat_id_to_data[original_id] = {
-                    "chat_id": original_id,
-                    "target_id": "unknown",
-                    "chat_title": f"Unknown_{original_id}"
-                }
+        # 3. Получаем chat_id_to_data из ChatInfo
+        chat_id_to_data = await get_all_chats_info(client)
+        logger.debug(f"Инициализирован chat_id_to_data: {chat_id_to_data}")
 
         me = await client.get_me()
         logger.info(f"Userbot запущен как: @{me.username} (ID: {me.id})")

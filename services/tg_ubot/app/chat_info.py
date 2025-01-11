@@ -137,6 +137,19 @@ class ChatInfo:
         """
         return self.chats_info
 
+    def get_name_or_username(self, entity):
+        """
+        Получает название или username из сущности.
+        """
+        if self.get_chat_title(entity):
+            return self.get_chat_title(entity)
+        elif self.get_chat_username(entity):
+            return f"@{self.get_chat_username(entity)}"
+        elif hasattr(entity, 'first_name') or hasattr(entity, 'last_name'):
+            return f"{getattr(entity, 'first_name', '')} {getattr(entity, 'last_name', '')}".strip()
+        else:
+            return "Unknown"
+
 
 async def get_all_chats_info(client: TelegramClient):
     """

@@ -139,6 +139,12 @@ async def process_message_event(event, event_type, message_buffer, counter, clie
         # Извлечение ссылок + markdown-версию
         text_markdown, links = build_markdown_and_links(raw_text, msg.entities or [])
 
+        name_or_username = chat_info.get("name_or_username")
+        if not name_or_username or name_or_username == "Unknown":
+            name_uname = target_id
+        else:
+            name_uname = name_or_username
+
         # Формируем итоговый JSON
         message_data = {
             "event_type": event_type,
@@ -156,7 +162,9 @@ async def process_message_event(event, event_type, message_buffer, counter, clie
             "sender": sender_info,
             "chat_id": chat_id,
             "chat_title": chat_title,
-            "target_id": target_id
+            "target_id": target_id,
+            'name_uname': name_uname,
+            'month_part': msg.date.strftime('%Y-%m')
         }
 
         # Отправляем в Kafka (или куда нужно)

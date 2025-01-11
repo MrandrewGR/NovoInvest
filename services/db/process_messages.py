@@ -172,7 +172,7 @@ def process_single_message(conn, raw_json):
     month_part = data.get("month_part")
     name_uname = data.get("name_uname")
 
-    if target_id is None or month_part is None:
+    if (name_uname is None and target_id is None) or month_part is None:
         logger.warning(f"Пропускаем сообщение без target_id или month_part: {data}")
         return
 

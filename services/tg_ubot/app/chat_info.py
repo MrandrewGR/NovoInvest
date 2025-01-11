@@ -120,15 +120,20 @@ class ChatInfo:
          - Иначе "Unknown"
         """
         username = self.get_chat_username(entity)
+        logger.debug(f"get_name_or_username: username={username}")
         if username:
             return f"@{username}"
         elif isinstance(entity, User):
             fn = entity.first_name or ""
             ln = entity.last_name or ""
             name = (fn + " " + ln).strip()
+            logger.debug(f"get_name_or_username: name={name}")
             return name if name else "Unknown"
         elif hasattr(entity, 'title'):
-            return entity.title
+            title = entity.title
+            logger.debug(f"get_name_or_username: title={title}")
+            return title
+        logger.debug("get_name_or_username: Unknown")
         return "Unknown"
 
     def get_chats_info(self):

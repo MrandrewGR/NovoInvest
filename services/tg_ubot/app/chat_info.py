@@ -55,7 +55,7 @@ class ChatInfo:
 
                 # Формируем структуру
                 chat_data = {
-                    "chat_id": chat_id,
+                    "chat_id": original_id, # chat_id,
                     "chat_title": chat_title,
                     "chat_username": chat_username,
                     "name_or_username": name_or_username,

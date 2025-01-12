@@ -6,6 +6,7 @@ from telethon import TelegramClient, events
 from telethon.tl.types import Message, MessageEntityUrl, MessageEntityTextUrl
 from app.config import settings
 from app.utils import human_like_delay, get_delay_settings, ensure_dir
+import json
 import os
 
 logger = logging.getLogger("unified_handler")
@@ -172,7 +173,14 @@ async def process_message_event(event, event_type, message_buffer, counter, clie
             'month_part': msg.date.strftime('%Y-%m')
         }
 
-        # Отправляем в Kafka (или куда нужно)
+        # логгирование
+        try:
+            message_json = json.dumps(message_data, ensure_ascii=False)
+            logger.info(f"[unified_handler] Финальный JSON для Kafka: {message_json}")
+        except (TypeError, ValueError) as e:
+            logger.error(f"Ошибка сериализации message_data в JSON: {e}")
+
+        # Отправляем в Kafka
         kafka_topic = settings.KAFKA_UBOT_OUTPUT_TOPIC
         await message_buffer.put((kafka_topic, message_data))
         logger.info(f"[unified_handler] Обработано сообщение {msg.id} из {chat_title}, target_id={target_id}")

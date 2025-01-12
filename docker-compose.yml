@@ -17,7 +17,7 @@ services:
       - zookeeper_data:/var/lib/zookeeper/data
       - zookeeper_log:/var/lib/zookeeper/log
     networks:
-      - app_app_network
+      - app_network
 
   kafka:
     image: confluentinc/cp-kafka:7.4.0
@@ -37,7 +37,7 @@ services:
       - kafka_data:/var/lib/kafka/data
     restart: unless-stopped
     networks:
-      - app_app_network
+      - app_network
     healthcheck:
       test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
       interval: 15s
@@ -60,7 +60,7 @@ services:
       - pgdata:/var/lib/postgresql/data
       - ./services/db/init-db:/docker-entrypoint-initdb.d
     networks:
-      - app_app_network
+      - app_network
 
   tg_ubot:
     container_name: tg_ubot
@@ -75,7 +75,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
     networks:
-      - app_app_network
+      - app_network
     volumes:
       - /home/dev/app/session_name.session:/app/session_name.session
 
@@ -96,7 +96,7 @@ services:
       - postgres
     restart: unless-stopped
     networks:
-      - app_app_network
+      - app_network
 
   bot:
     container_name: bot
@@ -109,7 +109,7 @@ services:
       kafka:
         condition: service_healthy
     networks:
-      - app_app_network
+      - app_network
     volumes:
       - shared_files:/app/files  # общий том
 
@@ -124,12 +124,12 @@ services:
         condition: service_healthy
     restart: unless-stopped
     networks:
-      - app_app_network
+      - app_network
     volumes:
       - shared_files:/app/files  # тот же том и та же директория
 
 networks:
-  app_app_network:
+  app_network:
     driver: bridge
 
 volumes:

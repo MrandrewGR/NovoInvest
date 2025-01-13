@@ -1,40 +1,58 @@
 # services/tg_ubot/app/main.py
 
 import asyncio
-import logging
 import os
 import signal
-import json
-from telethon import TelegramClient, events
-from telethon.errors import FloodWaitError
+from telethon import TelegramClient
 from .config import settings
 from .logger import setup_logging
 from .kafka_producer import KafkaMessageProducer
-from .kafka_consumer import KafkaMessageConsumer
+from .backfill_manager import BackfillManager
+from .state_manager import StateManager
+from .chat_info import get_all_chats_info
 from .handlers.unified_handler import register_unified_handler
 from .utils import ensure_dir
+# ИМПОРТИРУЕМ MessageCounter, чтобы считать количество сообщений (см. ваш старый код)
 from .state import MessageCounter
-from .chat_info import get_all_chats_info
 
 MAX_BUFFER_SIZE = 10000
 RECONNECT_INTERVAL = 10
 
 async def run_userbot():
+    """
+    Главная точка входа для пользовательского бота (tg_ubot).
+    Запускает Telethon-клиент, KafkaProducer, бэкфилл (BackfillManager).
+    """
+
+    # Убеждаемся, что директории logs/media существуют
     ensure_dir(settings.MEDIA_DIR)
     ensure_dir(os.path.dirname(settings.LOG_FILE))
 
     logger = setup_logging()
 
+    # Инициализируем Telethon
     session_file = settings.SESSION_FILE
     client = TelegramClient(session_file, settings.TELEGRAM_API_ID, settings.TELEGRAM_API_HASH)
 
+    # Очередь для сообщений (topic, data) -> Kafka
     message_buffer = asyncio.Queue(maxsize=MAX_BUFFER_SIZE)
-    kafka_producer = None
-    kafka_consumer = None
+
+    # Создаём Kafka продьюсер
+    kafka_producer = KafkaMessageProducer()
+
+    # Event для плавного завершения (SIGINT, SIGTERM)
     shutdown_event = asyncio.Event()
 
+    # userbot_active — ваш флаг "включён/выключён"
+    userbot_active = asyncio.Event()
+    userbot_active.set()
+
+    # ваш счётчик сообщений (можно его использовать, как раньше)
+    counter = MessageCounter(client)
+
+    # Обработка сигналов Ctrl+C, SIGTERM
     def shutdown_signal_handler(signum, frame):
-        logger.info(f"Получен сигнал завершения ({signum}), инициируем плавное завершение...")
+        logger.warning(f"Получен сигнал {signum}, завершаем работу...")
         shutdown_event.set()
 
     loop = asyncio.get_running_loop()
@@ -44,139 +62,93 @@ async def run_userbot():
         except NotImplementedError:
             pass
 
-    userbot_active = asyncio.Event()
-    userbot_active.set()
-    counter = MessageCounter(client)
-
-    async def handle_instruction(instruction):
-        action = instruction.get("action")
-        logger.info(f"Получена инструкция: {action}")
-        if action == "start":
-            userbot_active.set()
-            logger.info("Userbot активирован.")
-        elif action == "stop":
-            userbot_active.clear()
-            logger.info("Userbot приостановлен.")
-        else:
-            logger.warning(f"Неизвестная инструкция: {action}")
-
-    async def initialize_kafka_producer():
-        nonlocal kafka_producer
-        while not shutdown_event.is_set():
-            try:
-                kafka_producer = KafkaMessageProducer()
-                await kafka_producer.initialize()
-                logger.info("Kafka producer успешно инициализирован.")
-                break
-            except Exception as e:
-                logger.error(f"Не удалось инициализировать Kafka producer: {e}. Повтор через {RECONNECT_INTERVAL}с.")
-                await asyncio.sleep(RECONNECT_INTERVAL)
+    # Менеджер состояния (хранит /app/data/state.json)
+    # Подразумевается, что /app/data примонтирован из volume tg_ubot_state_volume
+    state_mgr = StateManager("/app/data/state.json")
 
     async def producer_task():
-        nonlocal kafka_producer
         while not shutdown_event.is_set():
-            if kafka_producer is None:
-                await initialize_kafka_producer()
-                if kafka_producer is None:
-                    continue
             try:
-                topic, message = await message_buffer.get()
-                if message is None:
+                topic, data = await message_buffer.get()
+                if data is None:
                     break
-                logger.info(f"Отправка сообщения в Kafka топик '{topic}'")
-                await kafka_producer.send_message(topic, message)
-                logger.info("Сообщение успешно отправлено в Kafka.")
+                # Отправляем в Kafka
+                await kafka_producer.send_message(topic, data)
                 message_buffer.task_done()
             except Exception as e:
-                logger.error(f"Ошибка при отправке сообщения в Kafka: {e}")
-                kafka_producer = None
+                logger.exception(f"Ошибка при отправке в Kafka: {e}")
                 await asyncio.sleep(RECONNECT_INTERVAL)
 
-    async def initialize_kafka_consumer():
-        nonlocal kafka_consumer
-        while not shutdown_event.is_set():
-            try:
-                kafka_consumer = KafkaMessageConsumer()
-                await kafka_consumer.initialize()
-                logger.info("Kafka consumer успешно инициализирован.")
-                break
-            except Exception as e:
-                logger.error(f"Не удалось инициализировать Kafka consumer: {e}. Повтор через {RECONNECT_INTERVAL}с.")
-                await asyncio.sleep(RECONNECT_INTERVAL)
+    # Коллбэк для unified_handler (отправляем данные в Kafka через очередь)
+    async def send_message_to_kafka(data: dict):
+        topic = settings.KAFKA_UBOT_OUTPUT_TOPIC
+        await message_buffer.put((topic, data))
 
-    async def consumer_task():
-        nonlocal kafka_consumer
-        while not shutdown_event.is_set():
-            if kafka_consumer is None:
-                await initialize_kafka_consumer()
-                if kafka_consumer is None:
-                    continue
-            try:
-                async for message in kafka_consumer.listen():
-                    try:
-                        instr = json.loads(message.value.decode('utf-8'))
-                        logger.info(f"Получена инструкция из Kafka: {instr}")
-                        await handle_instruction(instr)
-                    except json.JSONDecodeError:
-                        logger.error("Не удалось декодировать сообщение инструкции.")
-                    except Exception as e:
-                        logger.exception(f"Ошибка при обработке инструкции: {e}")
-            except Exception as e:
-                logger.error(f"Ошибка в Kafka consumer: {e}. Повтор через {RECONNECT_INTERVAL}с.")
-                kafka_consumer = None
-                await asyncio.sleep(RECONNECT_INTERVAL)
+    # Инициализируем бэкфил
+    backfill_manager = BackfillManager(
+        client=client,
+        state_mgr=state_mgr,
+        message_callback=send_message_to_kafka,
+        new_msgs_threshold=5,   # если за idle_timeout >5 новых сообщений, пропускаем бэкфилл
+        idle_timeout=10,
+        batch_size=50,
+        flood_wait_delay=60,
+        max_total_wait=300
+    )
 
     try:
-        # 1. Запускаем userbot
+        # 1. Запускаем Kafka Producer
+        await kafka_producer.initialize()
+        logger.info("[main] Kafka Producer инициализирован.")
+
+        # 2. Стартуем Telethon-клиент
         await client.start()
         if not await client.is_user_authorized():
-            logger.error("Telegram клиент не авторизован. Проверьте session_file.")
+            logger.error("[main] Telegram клиент не авторизован! Останавливаемся.")
             shutdown_event.set()
-            return
 
-        # 2. Принудительно грузим все диалоги
-        logger.info("Загружаем диалоги (get_dialogs), чтобы Telethon узнал о всех пользователях и чатах...")
+        # 3. Грузим диалоги, собираем информацию о чатах
         await client.get_dialogs()
-
-        # 3. Собираем chat_id_to_data через chat_info.py
         chat_id_to_data = await get_all_chats_info(client)
-        logger.info(f"Собрано чатов/каналов/пользователей: {len(chat_id_to_data)}")
-
-        me = await client.get_me()
-        logger.info(f"Userbot запущен как: @{me.username} (ID: {me.id})")
+        logger.info(f"[main] Собрано {len(chat_id_to_data)} чатов/каналов.")
 
         # 4. Регистрируем unified_handler
-        from .handlers.unified_handler import register_unified_handler
-        register_unified_handler(client, message_buffer, counter, userbot_active, chat_id_to_data)
-
-        # 5. Запускаем продьюсер (и при желании консюмер)
-        producer = asyncio.create_task(producer_task())
-        # consumer = asyncio.create_task(consumer_task())
-
-        # 6. Запускаем всё вместе
-        await asyncio.gather(
-            client.run_until_disconnected(),
-            producer,
-            shutdown_event.wait()
+        # Обратите внимание: передаём userbot_active, counter, state_mgr, message_buffer
+        register_unified_handler(
+            client=client,
+            message_buffer=message_buffer,
+            counter=counter,
+            userbot_active=userbot_active,
+            chat_id_to_data=chat_id_to_data,
+            state_mgr=state_mgr
         )
 
+        # 5. Создаём таски: producer и backfill
+        producer_coro = asyncio.create_task(producer_task())
+        backfill_coro = asyncio.create_task(backfill_manager.run())
+
+        # 6. Запускаем всё
+        await asyncio.gather(
+            client.run_until_disconnected(),
+            producer_coro,
+            backfill_coro,
+            shutdown_event.wait()
+        )
     except Exception as e:
-        logger.exception(f"Ошибка при запуске userbot: {e}")
+        logger.exception("[main] Ошибка в run_userbot:", exc_info=e)
     finally:
+        # Останавливаем бэкфилл
+        backfill_manager.stop()
+
+        # Отключаем клиента
         await client.disconnect()
+
+        # Закрываем Kafka producer
         if kafka_producer:
             await kafka_producer.close()
-            logger.info("Kafka producer закрыт.")
-        if kafka_consumer:
-            await kafka_consumer.close()
-            logger.info("Kafka consumer закрыт.")
-        logger.info("Сервис tg_ubot завершил работу корректно.")
+
+        logger.info("[main] Сервис tg_ubot завершён.")
 
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(run_userbot())
-    except KeyboardInterrupt:
-        logging.getLogger("userbot").info("Userbot остановлен по запросу пользователя.")
-    except Exception as e:
-        logging.getLogger("userbot").exception(f"Неожиданная ошибка при запуске main: {e}")
+    asyncio.run(run_userbot())

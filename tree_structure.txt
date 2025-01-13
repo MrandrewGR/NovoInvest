@@ -20,6 +20,7 @@
 │   │   ├── init-db
 │   │   │   └── init.sql
 │   │   ├── main.py
+│   │   ├── process_messages.py
 │   │   ├── requirements.txt
 │   │   └── wait-for-services.sh
 │   ├── tg_ubot
@@ -27,6 +28,7 @@
 │   │   ├── app
 │   │   │   ├── README.md
 │   │   │   ├── __init__.py
+│   │   │   ├── chat_info.py
 │   │   │   ├── config.py
 │   │   │   ├── handlers
 │   │   │   │   ├── __init__.py
@@ -37,6 +39,7 @@
 │   │   │   ├── main.py
 │   │   │   ├── send_test_message.py
 │   │   │   ├── state.py
+│   │   │   ├── test_entity.py
 │   │   │   └── utils.py
 │   │   ├── media
 │   │   ├── requirements.txt

@@ -1,4 +1,4 @@
-# File location: services/tg_ubot/app/handlers/unified_handler.py
+# File location services/tg_ubot/app/handlers/unified_handler.py
 
 import logging
 import asyncio
@@ -7,67 +7,118 @@ from telethon.tl.types import Message, MessageEntityUrl, MessageEntityTextUrl
 from app.config import settings
 from app.utils import human_like_delay, get_delay_settings, ensure_dir
 import json
-import os
 
 logger = logging.getLogger("unified_handler")
 
 
-def register_unified_handler(client, message_buffer, counter, userbot_active, chat_id_to_data):
+def register_unified_handler(
+    client: TelegramClient,
+    message_buffer: asyncio.Queue,
+    counter,
+    userbot_active: asyncio.Event,
+    chat_id_to_data: dict,
+    state_mgr=None
+):
     """
     Регистрирует единый обработчик для всех "новых" и "изменённых" сообщений
-    в списке целевых chat_id/каналов.
+    в списке целевых chat_id/каналов (settings.TELEGRAM_TARGET_IDS).
+
+    Параметры:
+    - client: Telethon-клиент
+    - message_buffer: очередь (asyncio.Queue), куда отправляем (topic, data) для Kafka
+    - counter: экземпляр MessageCounter (счётчик обработанных сообщений)
+    - userbot_active: asyncio.Event, флаг включения/выключения юзербота
+    - chat_id_to_data: словарь метаданных о чатах (результат get_all_chats_info)
+    - state_mgr (необязательный): если передан, при каждом новом/редактированном
+      сообщении вызывается state_mgr.record_new_message() для учёта в BackfillManager.
     """
     target_ids = settings.TELEGRAM_TARGET_IDS
     logger.info(f"Регистрируем unified_handler для чатов/каналов: {target_ids}")
 
     @client.on(events.NewMessage(chats=target_ids))
     async def on_new_message(event):
+        # Фиксируем новое сообщение в state_mgr (если нужно для бэкфилла)
+        if state_mgr is not None:
+            state_mgr.record_new_message()
+
+        # Проверяем, "включён" ли userbot
         if not userbot_active.is_set():
             return
-        await process_message_event(event, "new_message", message_buffer, counter, client, chat_id_to_data)
+
+        await process_message_event(
+            event=event,
+            event_type="new_message",
+            message_buffer=message_buffer,
+            counter=counter,
+            client=client,
+            chat_id_to_data=chat_id_to_data
+        )
 
     @client.on(events.MessageEdited(chats=target_ids))
     async def on_edited_message(event):
+        # Фиксируем отредактированное сообщение в state_mgr (если нужно для бэкфилла)
+        if state_mgr is not None:
+            state_mgr.record_new_message()
+
+        # Проверяем, "включён" ли userbot
         if not userbot_active.is_set():
             return
-        await process_message_event(event, "edited_message", message_buffer, counter, client, chat_id_to_data)
+
+        await process_message_event(
+            event=event,
+            event_type="edited_message",
+            message_buffer=message_buffer,
+            counter=counter,
+            client=client,
+            chat_id_to_data=chat_id_to_data
+        )
 
 
 async def process_message_event(event, event_type, message_buffer, counter, client, chat_id_to_data):
     """
-    Обработка входящего сообщения/редактированного сообщения.
+    Обработка одного входящего или отредактированного сообщения:
+      1. "Человеко-подобная" задержка (учёт день/ночь)
+      2. Скачивание медиа (если есть)
+      3. Сбор реакций, forward-данных, reply-информации и т.д.
+      4. Формирование итогового JSON
+      5. Отправка в Kafka (через message_buffer)
+
+    Параметры:
+    - event: событие Telethon
+    - event_type: "new_message" или "edited_message"
+    - message_buffer: очередь для отправки в Kafka
+    - counter: MessageCounter (увеличиваем счётчик)
+    - client: Telethon-клиент
+    - chat_id_to_data: словарь метаданных о чатах
     """
     try:
         msg: Message = event.message
-        logger.debug(f"Получено сообщение: {msg.id} из chat_id={msg.chat_id}")
+        logger.debug(f"[unified_handler] Получено сообщение: {msg.id} из chat_id={msg.chat_id}")
 
-        # Логируем список доступных chat_id
+        # Проверяем, описан ли этот chat_id в chat_id_to_data
         logger.debug(f"Доступные chat_id в chat_id_to_data: {list(chat_id_to_data.keys())}")
-
         chat_id = msg.chat_id
         chat_info = chat_id_to_data.get(chat_id)
         if not chat_info:
-            logger.warning(f"chat_id={chat_id} отсутствует в chat_id_to_data. Пропускаем.")
+            logger.warning(f"[unified_handler] chat_id={chat_id} отсутствует в chat_id_to_data. Пропускаем.")
             return
-        else:
-            logger.debug(f"chat_id={chat_id} присутствует в chat_id_to_data: {chat_info}")
 
-        # Задержка (днём/ночью)
+        # Задержка по дневному/ночному времени
         min_delay, max_delay = get_delay_settings("chat")
         await human_like_delay(min_delay, max_delay)
 
-        # Инкремент счётчика сообщений
+        # Увеличиваем счётчик обработанных сообщений
         await counter.increment()
 
-        # Сохраняем медиа, если есть
+        # Скачиваем медиа (если есть)
         media_path = None
         if msg.media:
             ensure_dir(settings.MEDIA_DIR)
             try:
                 media_path = await msg.download_media(file=settings.MEDIA_DIR)
-                logger.debug(f"Медиа сохранено: {media_path}")
+                logger.debug(f"[unified_handler] Медиа сохранено: {media_path}")
             except Exception as e:
-                logger.error(f"Не удалось скачать медиа: {e}")
+                logger.error(f"[unified_handler] Не удалось скачать медиа: {e}")
 
         # Информация об отправителе
         sender_info = {}
@@ -78,17 +129,17 @@ async def process_message_event(event, event_type, message_buffer, counter, clie
                     "sender_id": getattr(sender, "id", None),
                     "sender_username": getattr(sender, "username", ""),
                     "sender_first_name": getattr(sender, "first_name", ""),
-                    "sender_last_name": getattr(sender, "last_name", None)
+                    "sender_last_name": getattr(sender, "last_name", None),
                 }
-                logger.debug(f"Информация об отправителе: {sender_info}")
+                logger.debug(f"[unified_handler] Информация об отправителе: {sender_info}")
         except Exception as e:
-            logger.error(f"Не удалось получить информацию об отправителе: {e}")
+            logger.error(f"[unified_handler] Не удалось получить информацию об отправителе: {e}")
 
-        # Получаем данные о чате
+        # Из chat_info (собранного через get_all_chats_info)
         target_id = chat_info.get("target_id", "unknown")
         chat_title = chat_info.get("chat_title", "Untitled")
 
-        # Сбор реакций
+        # Сбор реакций (Telethon 1.24+)
         reactions_info = []
         if getattr(msg, "reactions", None):
             if msg.reactions.results:
@@ -108,9 +159,9 @@ async def process_message_event(event, event_type, message_buffer, counter, clie
                         "reply_to_msg_id": reply_msg.id,
                     }
             except Exception as e:
-                logger.error(f"Не удалось получить reply-сообщение: {e}")
+                logger.error(f"[unified_handler] Не удалось получить reply-сообщение: {e}")
 
-        # Проверка, было ли отредактировано
+        # Проверка редактирования
         edited_info = {}
         if msg.edit_date:
             edited_info["was_edited"] = True
@@ -121,37 +172,30 @@ async def process_message_event(event, event_type, message_buffer, counter, clie
         if msg.forward:
             forward_info["is_forwarded"] = True
             forward_info["forwarded_from"] = str(msg.forward.from_name or "")
-            forwarded_from_id = getattr(msg.forward.from_id, 'user_id', None)
+            forwarded_from_id = getattr(msg.forward.from_id, "user_id", None)
             forward_info["forwarded_from_id"] = forwarded_from_id
-            forward_info["forwarded_date"] = (msg.forward.date.isoformat() if msg.forward.date else None)
+            forward_info["forwarded_date"] = msg.forward.date.isoformat() if msg.forward.date else None
         else:
             forward_info["is_forwarded"] = False
 
-        # Сбор «цитат»
+        # Сбор «цитат» (строки, начинающиеся с '>')
         quotes = []
         raw_text = msg.raw_text or ""
         for line in raw_text.splitlines():
             if line.strip().startswith(">"):
                 quotes.append(line.strip())
 
-        # Извлечение ссылок + markdown-версию
+        # Извлечение ссылок + markdown
         text_markdown, links = build_markdown_and_links(raw_text, msg.entities or [])
 
-        # Получаем name_or_username из chat_info
+        # name_or_username (из chat_info), если не задан - используем target_id
         name_or_username = chat_info.get("name_or_username")
-        logger.debug(f"name_or_username: {name_or_username}")
-
         if not name_or_username or name_or_username == "Unknown":
             name_uname = target_id
         else:
             name_uname = name_or_username
 
-        # Логирование для отладки
-        logger.debug(f"chat_id: {chat_id}")
-        logger.debug(f"name_or_username: {name_or_username}")
-        logger.debug(f"name_uname: {name_uname}")
-
-        # Формируем итоговый JSON
+        # Формируем итоговый JSON для Kafka
         message_data = {
             "event_type": event_type,
             "message_id": msg.id,
@@ -169,16 +213,16 @@ async def process_message_event(event, event_type, message_buffer, counter, clie
             "chat_id": chat_id,
             "chat_title": chat_title,
             "target_id": target_id,
-            'name_uname': name_uname,
-            'month_part': msg.date.strftime('%Y-%m')
+            "name_uname": name_uname,
+            "month_part": msg.date.strftime("%Y-%m"),
         }
 
-        # логгирование
+        # Логирование
         try:
             message_json = json.dumps(message_data, ensure_ascii=False)
             logger.info(f"[unified_handler] Финальный JSON для Kafka: {message_json}")
         except (TypeError, ValueError) as e:
-            logger.error(f"Ошибка сериализации message_data в JSON: {e}")
+            logger.error(f"[unified_handler] Ошибка сериализации message_data в JSON: {e}")
 
         # Отправляем в Kafka
         kafka_topic = settings.KAFKA_UBOT_OUTPUT_TOPIC
@@ -186,12 +230,17 @@ async def process_message_event(event, event_type, message_buffer, counter, clie
         logger.info(f"[unified_handler] Обработано сообщение {msg.id} из {chat_title}, target_id={target_id}")
 
     except Exception as e:
-        logger.exception(f"Ошибка в process_message_event: {e}")
+        logger.exception(f"[unified_handler] Ошибка в process_message_event: {e}")
 
 
 def build_markdown_and_links(raw_text: str, entities: list):
     """
     Превращает исходный текст + entities в (markdown-текст, список_ссылок).
+
+    Возвращает:
+      ( text_markdown, links )
+      где text_markdown - строка с [текстом](ссылка) в Markdown
+            links - список словарей {offset, length, url, display_text}
     """
     if not entities:
         return raw_text, []
@@ -202,13 +251,13 @@ def build_markdown_and_links(raw_text: str, entities: list):
     entities_sorted = sorted(entities, key=lambda e: e.offset)
 
     for entity in entities_sorted:
+        # Копируем "промежуточный" текст
         if entity.offset > last_offset:
             md_fragments.append(raw_text[last_offset:entity.offset])
 
         e_length = entity.length
         display_text = raw_text[entity.offset : entity.offset + e_length]
 
-        from telethon.tl.types import MessageEntityUrl, MessageEntityTextUrl
         if isinstance(entity, MessageEntityUrl):
             # URL виден напрямую
             url = display_text
@@ -217,25 +266,26 @@ def build_markdown_and_links(raw_text: str, entities: list):
                 "offset": entity.offset,
                 "length": e_length,
                 "url": url,
-                "display_text": display_text
+                "display_text": display_text,
             })
             last_offset = entity.offset + e_length
         elif isinstance(entity, MessageEntityTextUrl) and entity.url:
-            # скрытая ссылка
+            # Скрытая ссылка
             url = entity.url
             md_fragments.append(f"[{display_text}]({url})")
             links.append({
                 "offset": entity.offset,
                 "length": e_length,
                 "url": url,
-                "display_text": display_text
+                "display_text": display_text,
             })
             last_offset = entity.offset + e_length
         else:
-            # Остальные entity
+            # Остальные entity (bold, italic, mention и т.д.) - не обрабатываем отдельно
             md_fragments.append(display_text)
             last_offset = entity.offset + e_length
 
+    # Добавляем хвост
     if last_offset < len(raw_text):
         md_fragments.append(raw_text[last_offset:])
 

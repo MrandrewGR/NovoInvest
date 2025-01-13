@@ -1,13 +1,9 @@
-# File location: services/tg_ubot/app/config.py
+# services/tg_ubot/app/config.py
 
 from pydantic import BaseSettings
-from typing import List
+from typing import Optional, List
 
 class Settings(BaseSettings):
-    # Список целевых чатов и каналов (как JSON-массив),
-    # Docker Compose заполнит TELEGRAM_TARGET_IDS в окружении.
-    TELEGRAM_TARGET_IDS: List[int]
-
     TELEGRAM_API_ID: int
     TELEGRAM_API_HASH: str
 
@@ -20,13 +16,17 @@ class Settings(BaseSettings):
     LOG_FILE: str = "/app/logs/userbot.log"
     MEDIA_DIR: str = "/app/media"
 
-    # Переход между днём и ночью
+    # Если нужно исключать Saved Messages, BotFather и т.д.
+    EXCLUDED_CHAT_IDS: Optional[List[int]] = []
+    EXCLUDED_USERNAMES: Optional[List[str]] = []
+
+    # Переход между днём и ночью (для задержек)
     TRANSITION_START_TO_NIGHT: str = "20:00"
     TRANSITION_END_TO_NIGHT: str = "22:00"
     TRANSITION_START_TO_DAY: str = "06:00"
     TRANSITION_END_TO_DAY: str = "08:00"
 
-    # Задержки для «днём» и «ночью»
+    # Задержки
     CHAT_DELAY_MIN_DAY: float = 1.0
     CHAT_DELAY_MAX_DAY: float = 3.0
     CHAT_DELAY_MIN_NIGHT: float = 2.0
@@ -36,5 +36,12 @@ class Settings(BaseSettings):
     CHANNEL_DELAY_MAX_DAY: float = 10.0
     CHANNEL_DELAY_MIN_NIGHT: float = 10.0
     CHANNEL_DELAY_MAX_NIGHT: float = 20.0
+
+    # Если нужно, можно слушать все чаты без TARGET_IDS
+    # Но для chat_info.py оставим TELEGRAM_TARGET_IDS пустым по умолчанию
+    TELEGRAM_TARGET_IDS: Optional[List[int]] = []
+
+    # Путь к файлу сессии
+    SESSION_FILE: str = "userbot.session"
 
 settings = Settings()

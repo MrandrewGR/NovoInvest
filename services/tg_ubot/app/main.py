@@ -1,14 +1,12 @@
-# File location: services/tg_ubot/app/main.py
+# services/tg_ubot/app/main.py
 
 import asyncio
 import logging
 import os
 import signal
 import json
-from telethon import TelegramClient
-from telethon.errors.rpcbaseerrors import RPCError
+from telethon import TelegramClient, events
 from telethon.errors import FloodWaitError
-from telethon.tl.types import Dialog
 from .config import settings
 from .logger import setup_logging
 from .kafka_producer import KafkaMessageProducer
@@ -27,7 +25,7 @@ async def run_userbot():
 
     logger = setup_logging()
 
-    session_file = os.getenv('SESSION_FILE', 'session_name.session')
+    session_file = settings.SESSION_FILE
     client = TelegramClient(session_file, settings.TELEGRAM_API_ID, settings.TELEGRAM_API_HASH)
 
     message_buffer = asyncio.Queue(maxsize=MAX_BUFFER_SIZE)
@@ -35,7 +33,6 @@ async def run_userbot():
     kafka_consumer = None
     shutdown_event = asyncio.Event()
 
-    # Сигналы для корректного завершения
     def shutdown_signal_handler(signum, frame):
         logger.info(f"Получен сигнал завершения ({signum}), инициируем плавное завершение...")
         shutdown_event.set()
@@ -63,7 +60,6 @@ async def run_userbot():
         else:
             logger.warning(f"Неизвестная инструкция: {action}")
 
-    # -- Инициализация Kafka
     async def initialize_kafka_producer():
         nonlocal kafka_producer
         while not shutdown_event.is_set():
@@ -130,32 +126,32 @@ async def run_userbot():
                 kafka_consumer = None
                 await asyncio.sleep(RECONNECT_INTERVAL)
 
-    # -- Основной блок
     try:
         # 1. Запускаем userbot
         await client.start()
         if not await client.is_user_authorized():
-            logger.error("Telegram клиент не авторизован (session_file некорректен?).")
+            logger.error("Telegram клиент не авторизован. Проверьте session_file.")
             shutdown_event.set()
             return
 
-        # 2. Принудительно загрузим все диалоги, чтобы Telethon видел юзеров и чаты
+        # 2. Принудительно грузим все диалоги
         logger.info("Загружаем диалоги (get_dialogs), чтобы Telethon узнал о всех пользователях и чатах...")
         await client.get_dialogs()
 
-        # 3. Получаем chat_id_to_data из ChatInfo
+        # 3. Собираем chat_id_to_data через chat_info.py
         chat_id_to_data = await get_all_chats_info(client)
-        logger.debug(f"Инициализирован chat_id_to_data: {chat_id_to_data}")
+        logger.info(f"Собрано чатов/каналов/пользователей: {len(chat_id_to_data)}")
 
         me = await client.get_me()
         logger.info(f"Userbot запущен как: @{me.username} (ID: {me.id})")
 
-        # 4. Регистрируем unified_handler, передавая chat_id_to_data (словарь)
+        # 4. Регистрируем unified_handler
+        from .handlers.unified_handler import register_unified_handler
         register_unified_handler(client, message_buffer, counter, userbot_active, chat_id_to_data)
 
-        # 5. Создаём задачи: продьюсер, консюмер и сам Telethon
+        # 5. Запускаем продьюсер (и при желании консюмер)
         producer = asyncio.create_task(producer_task())
-        # consumer = asyncio.create_task(consumer_task())  # если нужно
+        # consumer = asyncio.create_task(consumer_task())
 
         # 6. Запускаем всё вместе
         await asyncio.gather(
@@ -167,7 +163,6 @@ async def run_userbot():
     except Exception as e:
         logger.exception(f"Ошибка при запуске userbot: {e}")
     finally:
-        # Плавное завершение
         await client.disconnect()
         if kafka_producer:
             await kafka_producer.close()
@@ -176,6 +171,7 @@ async def run_userbot():
             await kafka_consumer.close()
             logger.info("Kafka consumer закрыт.")
         logger.info("Сервис tg_ubot завершил работу корректно.")
+
 
 if __name__ == "__main__":
     try:

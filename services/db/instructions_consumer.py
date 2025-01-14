@@ -1,66 +1,54 @@
 # services/db/instructions_consumer.py
-import logging
 import json
 import asyncio
-from kafka import KafkaConsumer, KafkaProducer
-from .gaps_manager import GapFiller  # см. далее
-from .config import DB_KAFKA_INSTRUCTIONS_TOPIC, TG_INSTRUCTIONS_TOPIC
-# или где у вас хранится инфа о топиках
-# Предположим, есть db.config.py, где DB_INSTRUCTIONS_TOPIC="db_instructions", TG_INSTRUCTIONS_TOPIC="tg_instructions"
+import logging
+from kafka import KafkaConsumer
+from .config import settings
 
-logger = logging.getLogger("db_instructions_consumer")
+logger = logging.getLogger("kafka_instructions_consumer")
 
-class DBInstructionsConsumer:
-    def __init__(self, db_dsn, kafka_bootstrap_servers):
-        self.db_dsn = db_dsn
-        self.kafka_bootstrap_servers = kafka_bootstrap_servers
+class TGInstructionsConsumer:
+    def __init__(self, state_mgr):
+        self.state_mgr = state_mgr
         self.consumer = None
-        self.producer = None
-        self.gap_filler = GapFiller(db_dsn)  # класс, который ищет пропуски внутри БД
 
-    def start(self):
-        self.consumer = KafkaConsumer(
-            DB_KAFKA_INSTRUCTIONS_TOPIC,
-            bootstrap_servers=self.kafka_bootstrap_servers,
-            # остальные параметры...
-            auto_offset_reset="earliest",
+    async def initialize(self):
+        loop = asyncio.get_running_loop()
+        # Запускаем consumer в отдельном потоке (run_in_executor)
+        self.consumer = await loop.run_in_executor(None, lambda: KafkaConsumer(
+            "tg_instructions",  # название топика
+            bootstrap_servers=[settings.KAFKA_BOOTSTRAP_SERVERS],
+            auto_offset_reset='earliest',
             enable_auto_commit=True,
-        )
-        self.producer = KafkaProducer(
-            bootstrap_servers=self.kafka_bootstrap_servers,
-            # ...
-            value_serializer=lambda v: json.dumps(v).encode("utf-8")
-        )
-        logger.info("DBInstructionsConsumer запущен, подписка на %s", DB_KAFKA_INSTRUCTIONS_TOPIC)
+            group_id='tg_instructions_group'
+        ))
+        logger.info("TGInstructionsConsumer инициализирован, слушаем tg_instructions.")
 
-        # Основной цикл
-        for message in self.consumer:
-            self.handle_message(message)
+    async def listen(self):
+        while True:
+            try:
+                # Читаем из consumer (синхронно)
+                message = await asyncio.get_running_loop().run_in_executor(
+                    None, lambda: next(iter(self.consumer))
+                )
+                self.handle_instruction(message)
+            except StopIteration:
+                logger.debug("Нет команд в tg_instructions сейчас.")
+                await asyncio.sleep(1)
+            except Exception as e:
+                logger.exception(f"Ошибка при чтении tg_instructions: {e}")
+                await asyncio.sleep(5)
 
-    def handle_message(self, message):
-        """Разбираем JSON и действуем по action."""
+    def handle_instruction(self, message):
         try:
             data = json.loads(message.value)
             action = data.get("action")
-            if action == "FIND_GAPS":
+            if action == "SET_BACKFILL":
                 chat_id = data["chat_id"]
-                logger.info(f"Получена команда FIND_GAPS для chat_id={chat_id}")
-                # ищем пропуски
-                missing_ranges = self.gap_filler.find_gaps_in_db(chat_id)
-                # missing_ranges — список [(start, end), (start2, end2), ...]
-                for (gap_start, gap_end) in missing_ranges:
-                    offset_id = gap_end + 1
-                    # Отправляем команду в tg_instructions
-                    cmd = {
-                        "action": "SET_BACKFILL",
-                        "chat_id": chat_id,
-                        "offset_id": offset_id
-                    }
-                    self.producer.send(TG_INSTRUCTIONS_TOPIC, cmd)
-                    logger.info(f"[FIND_GAPS] Отправлен SET_BACKFILL chat_id={chat_id} offset_id={offset_id}")
-                # Если нужно, ещё проверяем earliest_in_db < earliest_in_telegram...
-                # (Но earliest_in_telegram без запроса к tg_ubot мы не узнаем.)
+                offset_id = data["offset_id"]
+                logger.info(f"[TGInstructionsConsumer] Устанавливаем backfill_from_id={offset_id} для чата {chat_id}")
+                self.state_mgr.update_backfill_from_id(chat_id, offset_id)
             else:
-                logger.warning(f"Неизвестная action={action} в db_instructions")
+                logger.warning(f"[TGInstructionsConsumer] Неизвестная команда: {action}")
         except Exception as e:
-            logger.exception(f"Ошибка при обработке инструкции: {e}")
+            logger.exception(f"[TGInstructionsConsumer] Ошибка при handle_instruction: {e}")

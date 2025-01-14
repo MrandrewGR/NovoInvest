@@ -35,20 +35,34 @@ KAFKA_GAP_SCAN_RESPONSE_TOPIC = os.environ.get("KAFKA_GAP_SCAN_RESPONSE_TOPIC", 
 
 
 def sanitize_table_name(name_uname):
+    """
+    Убирает неалфавитные символы, ставит подчёркивания и т.д.
+    Пример: '@test-chat!' -> 'test_chat'.
+    Также гарантируем, что результат не начинается с цифры/минуса.
+    """
     if not isinstance(name_uname, str):
         name_uname = str(name_uname)
+    # убираем ведущий '@'
     name_uname = name_uname.lstrip('@')
+    # заменяем все не-буквенно-цифровые символы на '_'
     name_uname = re.sub(r'\W+', '_', name_uname)
+    # если вдруг имя начинается не с буквы/underscore — добавим '_'
     if not re.match(r'^[A-Za-z_]', name_uname):
         name_uname = f"_{name_uname}"
+    # PostgreSQL ограничение на длину идентификатора 63 символа
     name_uname = name_uname[:63]
     return name_uname.lower()
 
 
 def get_table_name(name_uname, target_id):
+    """
+    Возвращаем «чистое» имя таблицы. Если name_uname задано, используем его
+    (через sanitize_table_name). Если нет — формируем вида messages_negXXXXX или messages_XXXX.
+    """
     if name_uname and name_uname != "Unknown":
         sanitized = sanitize_table_name(name_uname)
     else:
+        # если нет name_uname, используем числовой идентификатор
         if target_id < 0:
             sanitized = f"messages_neg{abs(target_id)}"
         else:
@@ -65,7 +79,7 @@ def create_connection():
             password=DB_PASSWORD,
             dbname=DB_NAME
         )
-        conn.autocommit = False
+        conn.autocommit = False  # Можно оставить False, но тогда делать rollback() в except
         return conn
     except Exception as e:
         logger.error(f"Не удалось подключиться к базе данных: {e}")
@@ -135,6 +149,12 @@ def insert_message(conn, table_name, month_part, message_data):
 
 
 def process_single_message(conn, raw_json):
+    """
+    Обработка "обычного" сообщения из tg_ubot_output:
+    - Выясняем, в какую таблицу писать
+    - Убеждаемся, что таблица и нужная партиция существуют
+    - Вставляем запись
+    """
     data = json.loads(raw_json)
     target_id = data.get("target_id")
     month_part = data.get("month_part")
@@ -152,41 +172,67 @@ def process_single_message(conn, raw_json):
 
 
 ###########################################
-# Новая логика для "gap_scan_request"
+# Новый код для "gap_scan_request"
 ###########################################
 
 def get_earliest_in_db(conn, chat_id: int):
-    base_table = f"messages_{chat_id}"
-    with conn.cursor() as cur:
-        sql = f"SELECT MIN((data->>'message_id')::bigint) FROM {base_table}"
-        try:
+    """
+    Возвращаем MIN(message_id) для таблицы данного чата, или None.
+    Используем get_table_name(...), т.к. chat_id может быть отрицательным.
+    """
+    try:
+        base_table = get_table_name("", chat_id)
+        with conn.cursor() as cur:
+            sql = f"SELECT MIN((data->>'message_id')::bigint) FROM {base_table}"
             cur.execute(sql)
             row = cur.fetchone()
             return row[0] if row and row[0] else None
-        except Exception as e:
-            logger.warning(f"Ошибка при get_earliest_in_db(chat_id={chat_id}): {e}")
-            return None
+    except Exception as e:
+        conn.rollback()  # чтобы не зависать в aborted
+        logger.warning(f"Ошибка при get_earliest_in_db(chat_id={chat_id}): {e}")
+        return None
+
 
 def get_partitions_for_chat(conn, chat_id: int):
-    base_table = f"messages_{chat_id}"
-    with conn.cursor() as cur:
-        cur.execute("""
-            SELECT inhrelid::regclass::text
-            FROM pg_inherits
-            WHERE inhparent = %s::regclass
-        """, (base_table,))
-        rows = cur.fetchall()
-        return [r[0] for r in rows]
+    """
+    Возвращаем список названий партиций (child tables).
+    Аналогично: нужно корректно построить имя родительской таблицы.
+    """
+    try:
+        base_table = get_table_name("", chat_id)
+        with conn.cursor() as cur:
+            # Увы, нельзя просто передать %s::regclass, придётся делать f-строку:
+            sql = f"""
+                SELECT inhrelid::regclass::text
+                FROM pg_inherits
+                WHERE inhparent = '{base_table}'::regclass
+            """
+            cur.execute(sql)
+            rows = cur.fetchall()
+            return [r[0] for r in rows]
+    except Exception as e:
+        conn.rollback()
+        logger.warning(f"Ошибка при get_partitions_for_chat(chat_id={chat_id}): {e}")
+        return []
+
 
 def find_missing_ids_in_partition(conn, partition_name: str):
-    with conn.cursor() as cur:
-        sql = f"""
-          SELECT (data->>'message_id')::bigint AS mid
-          FROM {partition_name}
-          ORDER BY mid
-        """
-        cur.execute(sql)
-        all_ids = [row[0] for row in cur.fetchall()]
+    """
+    Читаем все message_id, сортируем и ищем "дыры" в последовательности.
+    """
+    try:
+        with conn.cursor() as cur:
+            sql = f"""
+              SELECT (data->>'message_id')::bigint AS mid
+              FROM {partition_name}
+              ORDER BY mid
+            """
+            cur.execute(sql)
+            all_ids = [row[0] for row in cur.fetchall()]
+    except Exception as e:
+        conn.rollback()
+        logger.warning(f"Ошибка при find_missing_ids_in_partition({partition_name}): {e}")
+        return []
 
     missing_ranges = []
     if not all_ids:
@@ -205,8 +251,7 @@ def find_missing_ids_in_partition(conn, partition_name: str):
 
 def process_gap_scan_request(conn, message: dict, producer: KafkaProducer):
     """
-    Получаем chat_id, выясняем earliest_in_db, находим пропуски.
-    Потом отправляем ответ в gap_scan_response
+    Получаем chat_id, ищем earliest_in_db, собираем "дыры" и шлём ответ.
     """
     chat_id = message.get("chat_id")
     correlation_id = message.get("correlation_id", "unknown")
@@ -214,9 +259,7 @@ def process_gap_scan_request(conn, message: dict, producer: KafkaProducer):
         logger.warning("gap_scan_request без chat_id, пропускаем")
         return
 
-    # 1. Находим earliest_in_db
     earliest_db = get_earliest_in_db(conn, chat_id)
-    # 2. Пробегаемся по партициям, собираем missing ranges
     partitions = get_partitions_for_chat(conn, chat_id)
     all_missing = []
     for p in partitions:
@@ -230,27 +273,29 @@ def process_gap_scan_request(conn, message: dict, producer: KafkaProducer):
         "chat_id": chat_id,
         "correlation_id": correlation_id,
         "earliest_in_db": earliest_db,
-        "missing_ranges": all_missing,  # список [(start,end), ...]
+        "missing_ranges": all_missing,  # [(start,end), ...]
     }
-    # Отправляем в KAFKA_GAP_SCAN_RESPONSE_TOPIC
+    # Публикуем в KAFKA_GAP_SCAN_RESPONSE_TOPIC
     producer.send(KAFKA_GAP_SCAN_RESPONSE_TOPIC, value=response)
     logger.info(f"[process_gap_scan_request] Отправили gap_scan_response для chat_id={chat_id}, correlation_id={correlation_id}")
 
 
 ###########################################
-# Основная логика: запускаем два KafkaConsumer-а, или один мульти-топиковый.
+# Запуск основного Consumer-a
 ###########################################
 
 def run_consumer():
+    """
+    Один KafkaConsumer, подписан сразу на tg_ubot_output (обычные сообщения) и gap_scan_request.
+    """
     conn = create_connection()
 
-    # Создадим KafkaProducer, чтобы отвечать на gap_scan_request
+    # Создадим KafkaProducer для ответов (gap_scan_response)
     producer = KafkaProducer(
         bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
         value_serializer=lambda v: json.dumps(v).encode('utf-8')
     )
 
-    # Можем запустить один Consumer, подписанный на 2 топика: [tg_ubot_output, gap_scan_request]
     consumer = KafkaConsumer(
         KAFKA_UBOT_OUTPUT_TOPIC,
         KAFKA_GAP_SCAN_TOPIC,
@@ -273,7 +318,7 @@ def run_consumer():
                 continue
 
             if topic == KAFKA_UBOT_OUTPUT_TOPIC:
-                # Старый вариант: обрабатываем "обычные" сообщения
+                # Обычные сообщения из tg_ubot_output
                 retry_count = 0
                 max_retries = 2
                 while True:
@@ -299,7 +344,7 @@ def run_consumer():
                         break
 
             elif topic == KAFKA_GAP_SCAN_TOPIC:
-                # Обрабатываем "gap_scan_request"
+                # Пришёл запрос на сканирование "дыр"
                 logger.info(f"[db-process] Получен gap_scan_request: {data}")
                 try:
                     process_gap_scan_request(conn, data, producer)

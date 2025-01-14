@@ -5,4 +5,4 @@ kafka-python==2.0.2
 python-dotenv==1.0.0
 pydantic==1.10.2
 asyncio==3.4.3
-aiokafka==0.6.0
+aiokafka==0.8.4

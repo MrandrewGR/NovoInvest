@@ -19,7 +19,6 @@ from .gaps_manager import GapsManager
 MAX_BUFFER_SIZE = 10000
 RECONNECT_INTERVAL = 10
 
-
 async def run_userbot():
     ensure_dir(settings.MEDIA_DIR)
     ensure_dir(os.path.dirname(settings.LOG_FILE))
@@ -115,7 +114,7 @@ async def run_userbot():
     # Создаём GapsManager
     gaps_manager = GapsManager(
         kafka_producer=kafka_producer,
-        kafka_consumer=kafka_consumer,
+        kafka_consumer=kafka_consumer,  # чтобы зарегистрировать handle_gap_scan_response
         state_mgr=state_mgr,
         client=client,
         gap_scan_request_topic="gap_scan_request",
@@ -127,7 +126,8 @@ async def run_userbot():
         async for (topic, data) in kafka_consumer.listen():
             if topic == gap_scan_response_topic:
                 if data.get("type") == "gap_scan_response":
-                    gaps_manager.handle_gap_scan_response(data)
+                    # вызываем gaps_manager.handle_gap_scan_response
+                    await gaps_manager.handle_gap_scan_response(data)
                 else:
                     logger.debug(f"[gap_scan_response_listener] Получено другое сообщение {data}")
             else:

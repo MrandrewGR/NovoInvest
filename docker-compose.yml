@@ -1,4 +1,3 @@
-# ./docker-compose.yml
 version: '3.8'
 services:
   zookeeper:
@@ -59,20 +58,17 @@ services:
     env_file:
       - /home/dev/app/env/tg_ubot.env
     environment:
-      SESSION_FILE: /app/session_name.session
-      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      KAFKA_UBOT_OUTPUT_TOPIC: tg_ubot_output
-      KAFKA_GAP_SCAN_RESPONSE_TOPIC: gap_scan_response
+      - SESSION_FILE=/app/session_name.session
     depends_on:
-      - kafka
-      - postgres
+      kafka:
+        condition: service_healthy
     restart: unless-stopped
     networks:
       - app_network
     volumes:
       - /home/dev/app/session_name.session:/app/session_name.session
+      # Хранилище state:
       - tg_ubot_state_volume:/app/data
-    command: ["wait-for-it.sh", "kafka:9092", "--", "python", "main.py"]
 
   db:
     container_name: db
@@ -86,20 +82,12 @@ services:
       DB_USER: postgres
       DB_PASSWORD: postgres
       DB_NAME: tg_ubot
-      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      KAFKA_UBOT_OUTPUT_TOPIC: tg_ubot_output
-      KAFKA_GROUP_ID: db_consumer_group
-      KAFKA_GAP_SCAN_TOPIC: gap_scan_request
-      KAFKA_GAP_SCAN_RESPONSE_TOPIC: gap_scan_response
     depends_on:
       - kafka
       - postgres
     restart: unless-stopped
     networks:
       - app_network
-    volumes:
-      - db_data:/app/data
-    command: ["wait-for-it.sh", "kafka:9092", "--", "python", "process_messages.py"]
 
   bot:
     container_name: bot
@@ -107,37 +95,27 @@ services:
       context: ./services/bot
     env_file:
       - /home/dev/app/env/bot.env
-    environment:
-      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      KAFKA_UBOT_OUTPUT_TOPIC: tg_ubot_output
-      KAFKA_GAP_SCAN_RESPONSE_TOPIC: gap_scan_response
-    depends_on:
-      - kafka
-      - postgres
     restart: unless-stopped
+    depends_on:
+      kafka:
+        condition: service_healthy
     networks:
       - app_network
     volumes:
       - shared_files:/app/files
-    command: ["wait-for-it.sh", "kafka:9092", "--", "python", "bot.py"]
 
   xml_worker:
     container_name: xml_worker
     build:
       context: ./services/xml_worker
-    environment:
-      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      KAFKA_UBOT_OUTPUT_TOPIC: tg_ubot_output
-      KAFKA_GAP_SCAN_RESPONSE_TOPIC: gap_scan_response
     depends_on:
-      - kafka
-      - postgres
+      kafka:
+        condition: service_healthy
     restart: unless-stopped
     networks:
       - app_network
     volumes:
       - shared_files:/app/files
-    command: ["wait-for-it.sh", "kafka:9092", "--", "python", "xml_worker.py"]
 
 networks:
   app_network:
@@ -156,6 +134,4 @@ volumes:
   shared_files:
     driver: local
   tg_ubot_state_volume:
-    driver: local
-  db_data:
     driver: local

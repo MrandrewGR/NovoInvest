@@ -58,10 +58,10 @@ services:
     env_file:
       - /home/dev/app/env/tg_ubot.env
     environment:
-      - SESSION_FILE=/app/session_name.session
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-      - KAFKA_UBOT_OUTPUT_TOPIC=tg_ubot_output
-      - KAFKA_GAP_SCAN_RESPONSE_TOPIC=gap_scan_response
+      SESSION_FILE: /app/session_name.session
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_UBOT_OUTPUT_TOPIC: tg_ubot_output
+      KAFKA_GAP_SCAN_RESPONSE_TOPIC: gap_scan_response
     depends_on:
       - kafka
       - postgres
@@ -85,11 +85,11 @@ services:
       DB_USER: postgres
       DB_PASSWORD: postgres
       DB_NAME: tg_ubot
-      KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-      KAFKA_UBOT_OUTPUT_TOPIC=tg_ubot_output
-      KAFKA_GROUP_ID=db_consumer_group
-      KAFKA_GAP_SCAN_TOPIC=gap_scan_request
-      KAFKA_GAP_SCAN_RESPONSE_TOPIC=gap_scan_response
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_UBOT_OUTPUT_TOPIC: tg_ubot_output
+      KAFKA_GROUP_ID: db_consumer_group
+      KAFKA_GAP_SCAN_TOPIC: gap_scan_request
+      KAFKA_GAP_SCAN_RESPONSE_TOPIC: gap_scan_response
     depends_on:
       - kafka
       - postgres
@@ -107,9 +107,9 @@ services:
     env_file:
       - /home/dev/app/env/bot.env
     environment:
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-      - KAFKA_UBOT_OUTPUT_TOPIC=tg_ubot_output
-      - KAFKA_GAP_SCAN_RESPONSE_TOPIC=gap_scan_response
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_UBOT_OUTPUT_TOPIC: tg_ubot_output
+      KAFKA_GAP_SCAN_RESPONSE_TOPIC: gap_scan_response
     depends_on:
       - kafka
       - postgres
@@ -125,9 +125,9 @@ services:
     build:
       context: ./services/xml_worker
     environment:
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-      - KAFKA_UBOT_OUTPUT_TOPIC=tg_ubot_output
-      - KAFKA_GAP_SCAN_RESPONSE_TOPIC=gap_scan_response
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_UBOT_OUTPUT_TOPIC: tg_ubot_output
+      KAFKA_GAP_SCAN_RESPONSE_TOPIC: gap_scan_response
     depends_on:
       - kafka
       - postgres

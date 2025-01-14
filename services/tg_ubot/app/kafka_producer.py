@@ -1,5 +1,4 @@
 # File location: services/tg_ubot/app/kafka_producer.py
-
 import logging
 from kafka import KafkaProducer
 from .config import settings
@@ -26,7 +25,7 @@ class KafkaMessageProducer:
 
     async def send_message(self, topic, message):
         if self.producer is None:
-            raise Exception("Kafka producer не инициализирован.")
+            raise Exception("Kafka producer не инициализован.")
         try:
             loop = asyncio.get_event_loop()
             future = await loop.run_in_executor(None, lambda: self.producer.send(topic, message))

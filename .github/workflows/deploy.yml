@@ -197,17 +197,18 @@ jobs:
             done
             ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose up -d --build --remove-orphans --force-recreate $SERVICES"
           fi
-      # Шаг 20
-      - name: Recreate PostgreSQL volume if DB changed
+
+      # Шаг 20: Recreate PostgreSQL container without removing volumes
+      - name: Recreate PostgreSQL container if DB changed
         run: |
           # Предполагаем, что сервис называется "db" и в docker-compose.yml у вас он описывает Postgres.
           # Если в вашем docker-compose имя сервиса "postgres" — замените в командах ниже "db" на нужное имя.
           if echo "${{ env.CHANGED_SERVICES }}" | grep -q "db"; then
-            echo "Изменения в сервисе db. Перезапускаем контейнер и пересоздаём volume."
-            ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose stop db && docker compose rm -f -v db"
+            echo "Изменения в сервисе db. Перезапускаем контейнер без удаления томов."
+            ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose stop db && docker compose rm -f db"
             ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose up -d db"
           else
-            echo "Сервис db не изменялся. Пропускаем пересоздание volume."
+            echo "Сервис db не изменялся. Пропускаем пересоздание контейнера."
           fi
 
       # Шаг 21: Проверка статуса Docker Compose

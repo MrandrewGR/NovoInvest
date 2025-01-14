@@ -14,11 +14,11 @@ from .chat_info import get_all_chats_info
 from .handlers.unified_handler import register_unified_handler
 from .utils import ensure_dir
 from .state import MessageCounter
-# Подключаем GapsManager
 from .gaps_manager import GapsManager
 
 MAX_BUFFER_SIZE = 10000
 RECONNECT_INTERVAL = 10
+
 
 async def run_userbot():
     ensure_dir(settings.MEDIA_DIR)
@@ -113,29 +113,27 @@ async def run_userbot():
     logger.info("[main] KafkaMessageConsumer для gap_scan_response инициализирован.")
 
     # Создаём GapsManager
-    # Он будет отправлять "gap_scan_request" в Kafka, и обрабатывать ответ через handle_gap_scan_response
     gaps_manager = GapsManager(
         kafka_producer=kafka_producer,
-        kafka_consumer=kafka_consumer,  # чтобы зарегистрировать handle_gap_scan_response
+        kafka_consumer=kafka_consumer,
         state_mgr=state_mgr,
         client=client,
         gap_scan_request_topic="gap_scan_request",
         gap_scan_response_topic=gap_scan_response_topic
     )
 
-    # Заведём корутину, которая будет слушать gap_scan_response и звать handle_gap_scan_response()
+    # Слушатель gap_scan_response
     async def gap_scan_response_listener():
         async for (topic, data) in kafka_consumer.listen():
             if topic == gap_scan_response_topic:
                 if data.get("type") == "gap_scan_response":
-                    # вызываем gaps_manager.handle_gap_scan_response
                     gaps_manager.handle_gap_scan_response(data)
                 else:
                     logger.debug(f"[gap_scan_response_listener] Получено другое сообщение {data}")
             else:
                 logger.debug(f"[gap_scan_response_listener] Пришло из неизвестного топика: {topic}")
 
-    # Пример корутины, которая раз в полчаса вызывает find_and_fill_gaps_for_chat
+    # Пример корутины, которая раз в полчаса сканирует пропуски
     async def gap_filler_task():
         while not shutdown_event.is_set():
             for c_id in chat_id_to_data.keys():
@@ -165,3 +163,8 @@ async def run_userbot():
             await kafka_producer.close()
         await kafka_consumer.close()
         logger.info("[main] Сервис tg_ubot завершён.")
+
+
+# Вызов асинхронной функции через asyncio.run()
+if __name__ == "__main__":
+    asyncio.run(run_userbot())

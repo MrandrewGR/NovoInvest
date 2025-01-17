@@ -65,7 +65,7 @@ jobs:
           # Функция для проверки и установки пакета
           install_if_outdated() {
             PACKAGE=$1
-            INSTALLED_VERSION=$(dpkg -s $PACKAGE | grep '^Version:' | awk '{print $2}')
+            INSTALLED_VERSION=$(dpkg -s $PACKAGE 2>/dev/null | grep '^Version:' | awk '{print $2}')
             AVAILABLE_VERSION=$(apt-cache policy $PACKAGE | grep 'Candidate:' | awk '{print $2}')
             
             if [ "$INSTALLED_VERSION" != "$AVAILABLE_VERSION" ]; then
@@ -187,32 +187,38 @@ jobs:
       # Шаг 15: Создание или обновление .env файла на сервере (после rsync)
       - name: Create or Update .env file on server
         run: |
-          ssh dev@${{ secrets.SSH_HOST }} "mkdir -p /home/dev/app/env"
+          ssh dev@${{ secrets.SSH_HOST }} << 'EOF'
+            mkdir -p /home/dev/app/env
 
-          ssh dev@${{ secrets.SSH_HOST }} "echo TELEGRAM_API_ID=${{ secrets.TELEGRAM_API_ID }} > /home/dev/app/env/.env"
-          ssh dev@${{ secrets.SSH_HOST }} "echo TELEGRAM_API_HASH=${{ secrets.TELEGRAM_API_HASH }} >> /home/dev/app/env/.env"
-          ssh dev@${{ secrets.SSH_HOST }} "echo TELEGRAM_PHONE=${{ secrets.TELEGRAM_PHONE }} >> /home/dev/app/env/.env"
-          ssh dev@${{ secrets.SSH_HOST }} "echo TELEGRAM_TARGET_IDS='${{ secrets.TELEGRAM_TARGET_IDS }}' >> /home/dev/app/env/.env"
-          ssh dev@${{ secrets.SSH_HOST }} "echo TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }} >> /home/dev/app/env/.env"
-          ssh dev@${{ secrets.SSH_HOST }} "echo KAFKA_BOOTSTRAP_SERVERS=kafka:9092 >> /home/dev/app/env/.env"
+            echo "TELEGRAM_API_ID=${{ secrets.TELEGRAM_API_ID }}" > /home/dev/app/env/.env
+            echo "TELEGRAM_API_HASH=${{ secrets.TELEGRAM_API_HASH }}" >> /home/dev/app/env/.env
+            echo "TELEGRAM_PHONE=${{ secrets.TELEGRAM_PHONE }}" >> /home/dev/app/env/.env
+            echo "TELEGRAM_TARGET_IDS='${{ secrets.TELEGRAM_TARGET_IDS }}'" >> /home/dev/app/env/.env
+            echo "TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}" >> /home/dev/app/env/.env
+            echo "KAFKA_BOOTSTRAP_SERVERS=kafka:9092" >> /home/dev/app/env/.env
+          EOF
 
       # Шаг 16: Создание или обновление .env файла для tg_ubot на сервере (после rsync)
       - name: Create or Update tg_ubot .env file on server
         run: |
-          ssh dev@${{ secrets.SSH_HOST }} "mkdir -p /home/dev/app/env"
+          ssh dev@${{ secrets.SSH_HOST }} << 'EOF'
+            mkdir -p /home/dev/app/env
 
-          ssh dev@${{ secrets.SSH_HOST }} "echo TELEGRAM_API_ID=${{ secrets.TELEGRAM_API_ID }} > /home/dev/app/env/tg_ubot.env"
-          ssh dev@${{ secrets.SSH_HOST }} "echo TELEGRAM_API_HASH=${{ secrets.TELEGRAM_API_HASH }} >> /home/dev/app/env/tg_ubot.env"
-          ssh dev@${{ secrets.SSH_HOST }} "echo TELEGRAM_PHONE='${{ secrets.TELEGRAM_PHONE }}' >> /home/dev/app/env/tg_ubot.env"
-          ssh dev@${{ secrets.SSH_HOST }} "echo TELEGRAM_TARGET_IDS='${{ secrets.TELEGRAM_TARGET_IDS }}' >> /home/dev/app/env/tg_ubot.env"
-          ssh dev@${{ secrets.SSH_HOST }} "echo KAFKA_BOOTSTRAP_SERVERS=kafka:9092 >> /home/dev/app/env/tg_ubot.env"
+            echo "TELEGRAM_API_ID=${{ secrets.TELEGRAM_API_ID }}" > /home/dev/app/env/tg_ubot.env
+            echo "TELEGRAM_API_HASH=${{ secrets.TELEGRAM_API_HASH }}" >> /home/dev/app/env/tg_ubot.env
+            echo "TELEGRAM_PHONE='${{ secrets.TELEGRAM_PHONE }}'" >> /home/dev/app/env/tg_ubot.env
+            echo "TELEGRAM_TARGET_IDS='${{ secrets.TELEGRAM_TARGET_IDS }}'" >> /home/dev/app/env/tg_ubot.env
+            echo "KAFKA_BOOTSTRAP_SERVERS=kafka:9092" >> /home/dev/app/env/tg_ubot.env
+          EOF
 
       # Шаг 17: Заполнение bot.env (после rsync)
       - name: Create or Update bot .env file on server
         run: |
-          ssh dev@${{ secrets.SSH_HOST }} "mkdir -p /home/dev/app/env"
+          ssh dev@${{ secrets.SSH_HOST }} << 'EOF'
+            mkdir -p /home/dev/app/env
 
-          ssh dev@${{ secrets.SSH_HOST }} "echo TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }} >> /home/dev/app/env/bot.env"
+            echo "TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}" >> /home/dev/app/env/bot.env
+          EOF
 
       # Шаг 18: Проверка содержимого .env файла
       - name: Verify .env file on server

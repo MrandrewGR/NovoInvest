@@ -1,7 +1,3 @@
-# ----------------------------
-# FILE: .github/workflows/deploy.yml
-# ----------------------------
-
 name: Deploy to Hetzner
 
 on:
@@ -12,12 +8,12 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
 
-    # Подключаем Secrets к env, чтобы внутри шагов
-    # переменные были не пустыми (TELEGRAM_BOT_TOKEN и т.п.).
     env:
+      # SSH доступ
       SSH_HOST: ${{ secrets.SSH_HOST }}
       SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
 
+      # Секреты Телеграма/Кафки/БД и т.д.
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
       TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
@@ -26,17 +22,17 @@ jobs:
       SESSION_FILE_BASE64: ${{ secrets.SESSION_FILE_BASE64 }}
 
     steps:
-      # Шаг 1: Клонирование репозитория с полной историей
+      # 1) Клонирование репо
       - name: Checkout code
         uses: actions/checkout@v3
         with:
-          fetch-depth: 0  # Загружает всю историю коммитов
+          fetch-depth: 0
 
-      # Шаг 2: Настройка Git для обнаружения изменений
+      # 2) Настройка Git
       - name: Set up Git
         run: git fetch origin main
 
-      # Шаг 3: Определение изменённых микросервисов и важных файлов
+      # 3) Определение изменённых сервисов
       - name: Determine changed services and important files
         id: changes
         run: |
@@ -60,7 +56,7 @@ jobs:
           echo "CHANGED_DOCKER_COMPOSE=$CHANGED_DOCKER_COMPOSE"
           echo "CHANGED_DEPLOY_YML=$CHANGED_DEPLOY_YML"
 
-      # Шаг 4: Отладка - вывод изменённых микросервисов и списка изменённых файлов
+      # 4) Debug Git Diff
       - name: Debug Git Diff
         run: |
           echo "CHANGED_SERVICES: $CHANGED_SERVICES"
@@ -68,27 +64,27 @@ jobs:
           echo "FULL_DEPLOY: $FULL_DEPLOY"
           git diff --name-only ${{ github.event.before }} ${{ github.sha }} -- services/ docker-compose.yml .github/workflows/deploy.yml
 
-      # Шаг 5: Установка rsync и др. зависимостей
+      # 5) Установка rsync, jq
       - name: Install rsync and jq
         run: |
           sudo apt-get update
           sudo apt-get install -y rsync jq
 
-      # Шаг 6: Настройка SSH Agent
+      # 6) Настройка SSH
       - name: Set up SSH Agent
         uses: webfactory/ssh-agent@v0.5.3
         with:
           ssh-private-key: ${{ env.SSH_PRIVATE_KEY }}
 
-      # Шаг 7: known_hosts
+      # 7) Добавление хоста
       - name: Add known hosts
         run: ssh-keyscan -H ${{ env.SSH_HOST }} >> ~/.ssh/known_hosts
 
-      # Шаг 8: Тест SSH
+      # 8) Тест SSH
       - name: Test SSH Connection
         run: ssh dev@${{ env.SSH_HOST }} 'echo "SSH connection established"'
 
-      # Шаг 9: Установка Docker + Docker Compose (если нужно)
+      # 9) Установка Docker + Docker Compose
       - name: Install Docker and Docker Compose on server
         run: |
           ssh dev@${{ env.SSH_HOST }} << 'EOF'
@@ -111,28 +107,28 @@ jobs:
             docker compose version
           EOF
 
-      # Шаг 10: Добавление пользователя dev в группу docker
+      # 10) Добавление dev в группу docker
       - name: Add user to Docker group
         run: ssh dev@${{ env.SSH_HOST }} "sudo usermod -aG docker dev"
 
-      # Шаг 11: (Опционально) Применение изменений групп
+      # 11) Применение группы docker
       - name: Reload SSH session to apply Docker group membership
         run: |
           ssh dev@${{ env.SSH_HOST }} "newgrp docker << 'END'
           echo 'Docker group membership applied.'
           END"
 
-      # Шаг 12: Проверка Docker
+      # 12) Проверка Docker
       - name: Verify Docker installation
         run: |
           ssh dev@${{ env.SSH_HOST }} "docker --version"
           ssh dev@${{ env.SSH_HOST }} "docker compose version"
 
-      # Шаг 13: Проверка доступа к Docker
+      # 13) Проверка доступа к Docker
       - name: Check Docker access for dev user
         run: ssh dev@${{ env.SSH_HOST }} "docker ps || echo 'No containers running'"
 
-      # Шаг 14: rsync проекта, исключая env/
+      # 14) rsync проекта
       - name: Sync code to server
         run: |
           if [ "${{ env.FULL_DEPLOY }}" == "true" ]; then
@@ -151,7 +147,7 @@ jobs:
 
           rsync -avz --delete --exclude '.git' --exclude '.github' --exclude 'env/' . dev@${{ env.SSH_HOST }}:/home/dev/app/
 
-      # Шаг 15: Создание .env, tg_ubot.env, bot.env
+      # 15) Создание .env, tg_ubot.env, bot.env
       - name: Create env files on server
         run: |
           ssh dev@${{ env.SSH_HOST }} << 'EOF'
@@ -183,11 +179,11 @@ jobs:
             cat /home/dev/app/env/.env
           EOF
 
-      # Шаг 16: Проверка содержимого .env
+      # 16) Проверка содержимого .env
       - name: Verify main .env file
         run: ssh dev@${{ env.SSH_HOST }} "grep TELEGRAM_TARGET_IDS /home/dev/app/env/.env && echo 'Check .env done'"
 
-      # Шаг 16.1: Fix buildx permission
+      # 16.1) Fix buildx permission
       - name: Fix buildx permission
         run: |
           ssh dev@${{ env.SSH_HOST }} << 'EOF'
@@ -196,34 +192,28 @@ jobs:
             sudo chmod -R 775 /home/dev/.docker
           EOF
 
-      # Шаг 17: Загрузка Telethon session
+      # 17) Загрузка Telethon session
       - name: Decode and upload Telethon session
         run: |
           echo "${{ env.SESSION_FILE_BASE64 }}" | base64 -d > session_name.session
           rsync -avz session_name.session dev@${{ env.SSH_HOST }}:/home/dev/app/
           rm session_name.session
 
-      # Шаг 18: Запуск контейнеров
+      # 18) Запуск контейнеров (включая Kafka)
       - name: Docker Compose Up
         run: |
           ssh dev@${{ env.SSH_HOST }} << 'EOF'
             cd /home/dev/app
-            # Проверяем синтаксис (env-файлы уже есть!)
             docker compose config -q
             docker compose up -d --build --force-recreate
           EOF
 
-      # Шаг 19: Остановка Kafka (опционально)
-      - name: Stop Kafka
-        run: |
-          ssh dev@${{ env.SSH_HOST }} "if [ -f /home/dev/app/docker-compose.yml ]; then docker compose stop kafka || echo 'Kafka not running'; fi"
-
-      # Шаг 20: Удаление устаревшего узла /brokers/ids/1 из Zookeeper
+      # 19) (Опционально) Удаление устаревшего узла /brokers/ids/1 в Zookeeper
       - name: Clean up Zookeeper node for Kafka broker
         run: |
           ssh dev@${{ env.SSH_HOST }} "docker exec zookeeper zkCli.sh -server localhost:2181 delete /brokers/ids/1 || echo 'Node /brokers/ids/1 does not exist'"
 
-      # Шаг 21: Пересоздать volume PostgreSQL, если сервис db изменился
+      # 20) Пересоздать volume PostgreSQL, если сервис db изменился
       - name: Recreate PostgreSQL volume if DB changed
         run: |
           if echo "${{ env.CHANGED_SERVICES }}" | grep -q "db"; then
@@ -233,11 +223,11 @@ jobs:
             echo "DB not changed, skip volume recreate."
           fi
 
-      # Шаг 22: Проверка статуса Docker Compose
+      # 21) Проверка статуса Docker Compose
       - name: Check Docker Compose Status
         run: ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app && docker compose ps"
 
-      # Шаг 23: Просмотр логов для деплоенных микросервисов
+      # 22) Логи
       - name: View Logs for Deployed Services
         run: |
           if [ "${{ env.FULL_DEPLOY }}" == "true" ] || [ "${{ env.DOCKER_COMPOSE_CHANGED }}" == "true" ]; then
@@ -251,40 +241,37 @@ jobs:
             ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app && docker compose logs $service --tail 50"
           done
 
-      # Шаг 24: Обеспечение работы Kafka
-      - name: Ensure Kafka is running
-        run: ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app && docker compose up -d kafka"
-
-      # Шаг 25: Проверка состояния Kafka (ждём Healthy) - через docker inspect
+      # 23) Wait for Kafka to be healthy (через docker inspect)
       - name: Wait for Kafka to be healthy
         run: |
-          ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app && docker compose up -d kafka"
-          for i in {1..24}; do
-            # Проверяем Health напрямую через docker inspect <container_name='kafka'>
-            status=$(ssh dev@${{ env.SSH_HOST }} "docker inspect --format='{{.State.Health.Status}}' kafka" 2>/dev/null)
+          ssh dev@${{ env.SSH_HOST }} << 'EOF'
+            cd /home/dev/app
+            # Проверяем health статусы (container_name=kafka)
+            for i in {1..24}; do
+              status=$(docker inspect --format='{{.State.Health.Status}}' kafka 2>/dev/null)
+              if [ "$status" = "healthy" ]; then
+                echo "Kafka is healthy now"
+                exit 0
+              fi
+              echo "Kafka not healthy yet, waiting..."
+              sleep 5
+            done
+            echo "Timed out waiting for Kafka to become healthy"
+            exit 1
+          EOF
 
-            if [ \"$status\" = "healthy" ]; then
-              echo "Kafka is healthy now"
-              exit 0
-            fi
-            echo "Kafka not healthy yet, waiting..."
-            sleep 5
-          done
-          echo "Timed out waiting for Kafka to become healthy"
-          exit 1
-
-      # Шаг 26: Проверка здоровья Kafka
+      # 24) Проверка Kafka
       - name: Check Kafka Health
         run: |
           ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app && docker compose exec kafka kafka-broker-api-versions --bootstrap-server localhost:9092"
           echo "Kafka is responding"
 
-      # Шаг 27: Удаление неиспользуемых Docker volumes
+      # 25) Удаление неиспользуемых Docker volumes
       - name: Remove unused Docker volumes
         run: |
           ssh dev@${{ env.SSH_HOST }} "docker volume prune -f"
 
-      # Шаг 28: Дополнительная отладка - Вывод PATH и переменных окружения
+      # 26) Доп. отладка
       - name: Debug Environment
         run: |
           ssh dev@${{ env.SSH_HOST }} "echo \$PATH"

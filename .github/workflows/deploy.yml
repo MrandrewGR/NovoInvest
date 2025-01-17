@@ -131,7 +131,7 @@ jobs:
       # Шаг 13: Проверка доступа к Docker для пользователя dev
       - name: Check Docker access for dev user
         run: |
-          ssh dev@${{ secrets.SSH_HOST }} "docker ps"
+          ssh dev@${{ secrets.SSH_HOST }} "docker ps || echo 'No containers are running.'"
 
       # Шаг 14: Создание или обновление .env файла на сервере (если требуется)
       - name: Create or Update .env file on server
@@ -171,24 +171,14 @@ jobs:
         run: |
           # 1. Создадим локальный файл session_name.session из секретной Base64 строки
           echo "${{ secrets.SESSION_FILE_BASE64 }}" | base64 -d > session_name.session
-      
+          
           # 2. Передадим этот файл на сервер, в /home/dev/app/ (или другую директорию)
           rsync -avz session_name.session dev@${{ secrets.SSH_HOST }}:/home/dev/app/
-      
+          
           # 3. Удалим временный файл
           rm session_name.session
 
-      # Шаг 19: Остановка сервиса Kafka для обеспечения чистого завершения
-      - name: Stop Kafka
-        run: |
-          ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose stop kafka"
-
-      # Шаг 20: Удаление устаревшего узла /brokers/ids/1 из Zookeeper
-      - name: Clean up Zookeeper node for Kafka broker
-        run: |
-          ssh dev@${{ secrets.SSH_HOST }} "docker exec zookeeper zkCli.sh -server localhost:2181 delete /brokers/ids/1 || echo 'Node /brokers/ids/1 does not exist'"
-
-      # Шаг 21: Деплой изменённых микросервисов или полный деплой
+      # Шаг 19: Деплой изменённых микросервисов или полный деплой
       - name: Deploy services
         run: |
           if [ "${{ env.FULL_DEPLOY }}" == "true" ]; then
@@ -218,6 +208,16 @@ jobs:
             # Иначе поднимаем только изменённые сервисы
             ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose up -d --build --remove-orphans --force-recreate $SERVICES"
           fi
+
+      # Шаг 20: Остановка сервиса Kafka для обеспечения чистого завершения
+      - name: Stop Kafka
+        run: |
+          ssh dev@${{ secrets.SSH_HOST }} "if [ -f /home/dev/app/docker-compose.yml ]; then docker compose stop kafka || echo 'Kafka is not running.'; else echo 'docker-compose.yml not found, skipping docker compose stop kafka'; fi"
+
+      # Шаг 21: Удаление устаревшего узла /brokers/ids/1 из Zookeeper
+      - name: Clean up Zookeeper node for Kafka broker
+        run: |
+          ssh dev@${{ secrets.SSH_HOST }} "docker exec zookeeper zkCli.sh -server localhost:2181 delete /brokers/ids/1 || echo 'Node /brokers/ids/1 does not exist'"
 
       # Шаг 22: Recreate PostgreSQL volume if DB changed
       - name: Recreate PostgreSQL volume if DB changed

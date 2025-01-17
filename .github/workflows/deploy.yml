@@ -107,6 +107,9 @@ jobs:
       - name: Check Docker access for dev user
         run: ssh dev@${{ env.SSH_HOST }} "sudo docker ps || echo 'No containers running'"
 
+      - name: Remove existing Kafka data (опционально, будьте осторожны)
+        run: ssh dev@${{ env.SSH_HOST }} "sudo docker compose down -v kafka_data && sudo docker volume rm app_kafka_data || echo 'No existing Kafka data volume'"
+
       - name: Sync code to server
         run: |
           # Логика выбора, какие сервисы деплоить
@@ -165,10 +168,7 @@ jobs:
         run: |
           ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app &&
           sudo docker compose config -q &&
-          sudo docker compose up -d --build --force-recreate"
-
-      - name: Clean up Kafka broker in KRaft
-        run: ssh dev@${{ env.SSH_HOST }} "sudo docker exec kafka kafka-storage.sh remove --cluster-id <YOUR_CLUSTER_ID> --node-id 1 || echo 'Broker node does not exist or already removed'"
+          sudo docker compose up -d --build --force-recreate --remove-orphans"
 
       - name: Recreate PostgreSQL volume if DB changed
         run: |
@@ -223,3 +223,7 @@ jobs:
         run: |
           ssh dev@${{ env.SSH_HOST }} "echo \$PATH"
           ssh dev@${{ env.SSH_HOST }} "env"
+
+      - name: Retrieve Kafka logs on failure
+        if: failure()
+        run: ssh dev@${{ env.SSH_HOST }} "sudo docker logs kafka > kafka.log && cat kafka.log"

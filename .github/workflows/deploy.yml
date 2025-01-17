@@ -1,4 +1,3 @@
-# .github/workflows/deploy.yml
 name: Deploy to Hetzner
 
 on:
@@ -24,30 +23,29 @@ jobs:
       - name: Determine changed services and important files
         id: changes
         run: |
-          # Определяем изменения только в папке services/ и исключаем файлы
-          CHANGED_SERVICES=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} -- services/ | grep '^services/' | awk -F/ '{print $2}' | uniq | grep -v '^__init__.py$' || true)
-          
-          # Преобразуем многострочное значение в одну строку, разделяя сервисы запятыми
+          # Определяем изменения только в папке services/
+          CHANGED_SERVICES=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} -- services/ \
+            | grep '^services/' \
+            | awk -F/ '{print $2}' \
+            | uniq || true)
+
+          # Преобразуем многострочный вывод в одну строку, разделяя сервисы запятыми
           CHANGED_SERVICES=$(echo "$CHANGED_SERVICES" | paste -sd "," -)
-          
-          # Выводим значение для отладки
           echo "Detected changed services: $CHANGED_SERVICES"
-          
-          # Устанавливаем переменную окружения
           echo "CHANGED_SERVICES=$CHANGED_SERVICES" >> $GITHUB_ENV
 
-          # Проверяем, изменены ли docker-compose.yml или deploy.yml
+          # Проверяем, изменён ли docker-compose.yml или deploy.yml
           CHANGED_DOCKER_COMPOSE=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} -- docker-compose.yml | wc -l)
           CHANGED_DEPLOY_YML=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} -- .github/workflows/deploy.yml | wc -l)
-          
-          # Устанавливаем переменные окружения для полного деплоя или изменения docker-compose.yml
+
+          # Устанавливаем переменные окружения
           if [ "$CHANGED_DEPLOY_YML" -gt 0 ]; then
             echo "FULL_DEPLOY=true" >> $GITHUB_ENV
           elif [ "$CHANGED_DOCKER_COMPOSE" -gt 0 ]; then
             echo "DOCKER_COMPOSE_CHANGED=true" >> $GITHUB_ENV
           fi
-          
-          # Дополнительный вывод для отладки
+
+          # Дополнительная отладка
           echo "CHANGED_DOCKER_COMPOSE=$CHANGED_DOCKER_COMPOSE"
           echo "CHANGED_DEPLOY_YML=$CHANGED_DEPLOY_YML"
 
@@ -59,29 +57,11 @@ jobs:
           echo "FULL_DEPLOY: $FULL_DEPLOY"
           git diff --name-only ${{ github.event.before }} ${{ github.sha }} -- services/ docker-compose.yml .github/workflows/deploy.yml
 
-      # Шаг 5: Установка rsync и других зависимостей с проверкой актуальности версий
+      # Шаг 5: Установка rsync и других зависимостей
       - name: Install rsync and dependencies if outdated
         run: |
-          # Функция для проверки и установки пакета
-          install_if_outdated() {
-            PACKAGE=$1
-            INSTALLED_VERSION=$(dpkg -s $PACKAGE 2>/dev/null | grep '^Version:' | awk '{print $2}')
-            AVAILABLE_VERSION=$(apt-cache policy $PACKAGE | grep 'Candidate:' | awk '{print $2}')
-            
-            if [ "$INSTALLED_VERSION" != "$AVAILABLE_VERSION" ]; then
-              echo "$PACKAGE is outdated (installed: $INSTALLED_VERSION, available: $AVAILABLE_VERSION). Updating..."
-              sudo apt-get update
-              sudo apt-get install -y $PACKAGE
-            else
-              echo "$PACKAGE is up to date (version: $INSTALLED_VERSION). Skipping installation."
-            fi
-          }
-
-          # Проверка и установка rsync
-          install_if_outdated rsync
-
-          # Проверка и установка jq
-          install_if_outdated jq
+          sudo apt-get update
+          sudo apt-get install -y rsync jq
 
       # Шаг 6: Настройка SSH Agent с использованием секретного ключа
       - name: Set up SSH Agent
@@ -101,32 +81,21 @@ jobs:
       - name: Install Docker and Docker Compose on server
         run: |
           ssh dev@${{ secrets.SSH_HOST }} << 'EOF'
-            # Обновление пакетов и установка зависимостей
-            sudo apt-get update
-            sudo apt-get install -y ca-certificates curl gnupg lsb-release
+            if ! command -v docker &> /dev/null; then
+              sudo apt-get update
+              sudo apt-get install -y ca-certificates curl gnupg lsb-release
+              sudo mkdir -p /etc/apt/keyrings
+              curl -fsSL https://download.docker.com/linux/debian/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
 
-            # Удаление старых версий Docker Compose (если есть)
-            sudo rm -f /usr/local/bin/docker-compose
-            sudo rm -f /home/dev/.docker/cli-plugins/docker-compose
+              echo \
+                "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian \
+                $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 
-            # Добавление официального GPG ключа Docker
-            sudo mkdir -p /etc/apt/keyrings
-            curl -fsSL https://download.docker.com/linux/debian/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-
-            # Добавление репозитория Docker
-            echo \
-              "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian \
-              $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-
-            # Обновление пакетов и установка Docker
-            sudo apt-get update
-            sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-
-            # Включение и запуск Docker
-            sudo systemctl enable docker
-            sudo systemctl start docker
-
-            # Проверка установки Docker
+              sudo apt-get update
+              sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+              sudo systemctl enable docker
+              sudo systemctl start docker
+            fi
             docker --version
             docker compose version
           EOF
@@ -135,7 +104,7 @@ jobs:
       - name: Add user to Docker group
         run: ssh dev@${{ secrets.SSH_HOST }} "sudo usermod -aG docker dev"
 
-      # Шаг 11: Перезагрузка SSH сессии для применения изменений групп
+      # Шаг 11: Перезагрузка SSH сессии для применения изменений групп (опционально)
       - name: Reload SSH session to apply Docker group membership
         run: |
           ssh dev@${{ secrets.SSH_HOST }} "newgrp docker << 'END'
@@ -153,8 +122,8 @@ jobs:
         run: |
           ssh dev@${{ secrets.SSH_HOST }} "docker ps || echo 'No containers are running.'"
 
-      # Шаг 14: Deploy services (rsync с исключением директории env/)
-      - name: Deploy services
+      # Шаг 14: Синхронизация кода (rsync), исключая env/
+      - name: Deploy services (sync code only)
         run: |
           if [ "${{ env.FULL_DEPLOY }}" == "true" ]; then
             echo "Deploying all services due to changes in deploy.yml"
@@ -170,102 +139,91 @@ jobs:
             exit 0
           fi
 
-          # Удаление старых файлов (rsync с --delete и исключением env/)
           rsync -avz --delete --exclude '.git' --exclude '.github' --exclude 'env/' . dev@${{ secrets.SSH_HOST }}:/home/dev/app/
 
-          # Проверка синтаксиса docker-compose.yml после копирования
+          # Проверка синтаксиса docker-compose.yml
           ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose config -q"
 
-          # Запуск контейнеров с проверенной конфигурацией
-          if [ "${{ env.FULL_DEPLOY }}" == "true" ] || [ "${{ env.DOCKER_COMPOSE_CHANGED }}" == "true" ]; then
-            ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose up -d --build --force-recreate"
-          else
-            # Иначе поднимаем только изменённые сервисы
-            ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose up -d --build --remove-orphans --force-recreate $SERVICES"
-          fi
-
-      # Шаг 15: Создание или обновление .env файла на сервере (после rsync)
-      - name: Create or Update .env file on server
+      # Шаг 15: Создание или обновление .env файла (основного) на сервере
+      - name: Create or Update main .env file on server
         run: |
           ssh dev@${{ secrets.SSH_HOST }} << 'EOF'
             mkdir -p /home/dev/app/env
 
-            echo "TELEGRAM_API_ID=${{ secrets.TELEGRAM_API_ID }}" > /home/dev/app/env/.env
-            echo "TELEGRAM_API_HASH=${{ secrets.TELEGRAM_API_HASH }}" >> /home/dev/app/env/.env
-            echo "TELEGRAM_PHONE=${{ secrets.TELEGRAM_PHONE }}" >> /home/dev/app/env/.env
-            echo "TELEGRAM_TARGET_IDS='${{ secrets.TELEGRAM_TARGET_IDS }}'" >> /home/dev/app/env/.env
-            echo "TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}" >> /home/dev/app/env/.env
+            echo "TELEGRAM_API_ID=${TELEGRAM_API_ID}" > /home/dev/app/env/.env
+            echo "TELEGRAM_API_HASH=${TELEGRAM_API_HASH}" >> /home/dev/app/env/.env
+            echo "TELEGRAM_PHONE=${TELEGRAM_PHONE}" >> /home/dev/app/env/.env
+            echo "TELEGRAM_TARGET_IDS='${TELEGRAM_TARGET_IDS}'" >> /home/dev/app/env/.env
+            echo "TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}" >> /home/dev/app/env/.env
             echo "KAFKA_BOOTSTRAP_SERVERS=kafka:9092" >> /home/dev/app/env/.env
           EOF
 
-      # Шаг 16: Создание или обновление .env файла для tg_ubot на сервере (после rsync)
+      # Шаг 16: Создание или обновление tg_ubot .env на сервере
       - name: Create or Update tg_ubot .env file on server
         run: |
           ssh dev@${{ secrets.SSH_HOST }} << 'EOF'
             mkdir -p /home/dev/app/env
 
-            echo "TELEGRAM_API_ID=${{ secrets.TELEGRAM_API_ID }}" > /home/dev/app/env/tg_ubot.env
-            echo "TELEGRAM_API_HASH=${{ secrets.TELEGRAM_API_HASH }}" >> /home/dev/app/env/tg_ubot.env
-            echo "TELEGRAM_PHONE='${{ secrets.TELEGRAM_PHONE }}'" >> /home/dev/app/env/tg_ubot.env
-            echo "TELEGRAM_TARGET_IDS='${{ secrets.TELEGRAM_TARGET_IDS }}'" >> /home/dev/app/env/tg_ubot.env
+            echo "TELEGRAM_API_ID=${TELEGRAM_API_ID}" > /home/dev/app/env/tg_ubot.env
+            echo "TELEGRAM_API_HASH=${TELEGRAM_API_HASH}" >> /home/dev/app/env/tg_ubot.env
+            echo "TELEGRAM_PHONE='${TELEGRAM_PHONE}'" >> /home/dev/app/env/tg_ubot.env
+            echo "TELEGRAM_TARGET_IDS='${TELEGRAM_TARGET_IDS}'" >> /home/dev/app/env/tg_ubot.env
             echo "KAFKA_BOOTSTRAP_SERVERS=kafka:9092" >> /home/dev/app/env/tg_ubot.env
           EOF
 
-      # Шаг 17: Заполнение bot.env (после rsync)
+      # Шаг 17: Создание или обновление bot.env на сервере
       - name: Create or Update bot .env file on server
         run: |
           ssh dev@${{ secrets.SSH_HOST }} << 'EOF'
             mkdir -p /home/dev/app/env
-
-            echo "TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}" >> /home/dev/app/env/bot.env
+            echo "TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}" > /home/dev/app/env/bot.env
           EOF
 
       # Шаг 18: Проверка содержимого .env файла
       - name: Verify .env file on server
         run: |
-          ssh dev@${{ secrets.SSH_HOST }} "grep TELEGRAM_TARGET_IDS /home/dev/app/env/.env && echo 'Проверка завершена.'"
+          ssh dev@${{ secrets.SSH_HOST }} "grep TELEGRAM_TARGET_IDS /home/dev/app/env/.env && echo 'Проверка .env завершена.'"
 
-      # Шаг 19: Deploy session_tg
+      # Шаг 19: Deploy session_tg (Telethon session)
       - name: Decode and upload Telethon session
         run: |
-          # 1. Создадим локальный файл session_name.session из секретной Base64 строки
           echo "${{ secrets.SESSION_FILE_BASE64 }}" | base64 -d > session_name.session
-          
-          # 2. Передадим этот файл на сервер, в /home/dev/app/ (или другую директорию)
           rsync -avz session_name.session dev@${{ secrets.SSH_HOST }}:/home/dev/app/
-          
-          # 3. Удалим временный файл
           rm session_name.session
 
-      # Шаг 20: Остановка сервиса Kafka для обеспечения чистого завершения
+      # Шаг 20: Запуск контейнеров (docker compose up)
+      - name: Docker Compose Up
+        run: |
+          ssh dev@${{ secrets.SSH_HOST }} << 'EOF'
+            cd /home/dev/app
+            docker compose up -d --build --force-recreate
+          EOF
+
+      # Шаг 21: Остановка Kafka (опционально), если нужно "чистое завершение"
       - name: Stop Kafka
         run: |
-          ssh dev@${{ secrets.SSH_HOST }} "if [ -f /home/dev/app/docker-compose.yml ]; then docker compose stop kafka || echo 'Kafka is not running.'; else echo 'docker-compose.yml not found, skipping docker compose stop kafka'; fi"
+          ssh dev@${{ secrets.SSH_HOST }} "if [ -f /home/dev/app/docker-compose.yml ]; then docker compose stop kafka || echo 'Kafka not running'; fi"
 
-      # Шаг 21: Удаление устаревшего узла /brokers/ids/1 из Zookeeper
+      # Шаг 22: Удаление устаревшего узла /brokers/ids/1 из Zookeeper
       - name: Clean up Zookeeper node for Kafka broker
         run: |
           ssh dev@${{ secrets.SSH_HOST }} "docker exec zookeeper zkCli.sh -server localhost:2181 delete /brokers/ids/1 || echo 'Node /brokers/ids/1 does not exist'"
 
-      # Шаг 22: Recreate PostgreSQL volume if DB changed
+      # Шаг 23: Пересоздать volume PostgreSQL, если сервис db изменился
       - name: Recreate PostgreSQL volume if DB changed
         run: |
-          # Предполагаем, что сервис называется "db" и в docker-compose.yml у вас он описывает Postgres.
-          # Если в вашем docker-compose имя сервиса "postgres" — замените в командах ниже "db" на нужное имя.
           if echo "${{ env.CHANGED_SERVICES }}" | grep -q "db"; then
-            echo "Изменения в сервисе db. Перезапускаем контейнер и пересоздаём volume."
             ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose stop db && docker compose rm -f -v db"
             ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose up -d db"
           else
-            echo "Сервис db не изменялся. Пропускаем пересоздание volume."
+            echo "DB not changed, skip volume recreate."
           fi
 
-      # Шаг 23: Проверка статуса Docker Compose
+      # Шаг 24: Проверка статуса Docker Compose
       - name: Check Docker Compose Status
-        run: |
-          ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose ps"
+        run: ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose ps"
 
-      # Шаг 24: Просмотр логов для деплоенных микросервисов
+      # Шаг 25: Просмотр логов для деплоенных микросервисов
       - name: View Logs for Deployed Services
         run: |
           if [ "${{ env.FULL_DEPLOY }}" == "true" ] || [ "${{ env.DOCKER_COMPOSE_CHANGED }}" == "true" ]; then
@@ -275,48 +233,45 @@ jobs:
           fi
 
           for service in $SERVICES; do
-            echo "Логи сервиса: $service"
+            echo "Logs for service: $service"
             ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose logs $service --tail 50"
           done
 
-      # Шаг 25: Обеспечение работы Kafka после деплоя
+      # Шаг 26: Обеспечение работы Kafka после деплоя
       - name: Ensure Kafka is running
         run: |
           ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose up -d kafka"
 
-      # Шаг 26: Проверка состояния Kafka
+      # Шаг 27: Проверка состояния Kafka (ждём Healthy)
       - name: Wait for Kafka to be healthy
         run: |
-          # Запускаем Kafka (если ещё не запущен)
           ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose up -d kafka"
-          
-          # Ждём максимум ~2 минуты (24 раза по 5 секунд)
           for i in {1..24}; do
             status=$(ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose ps --format json" \
               | jq -r '.[] | select(.Service == "kafka") | .Health')
-            
+
             if [ "$status" = "healthy" ]; then
               echo "Kafka is healthy now"
               exit 0
             fi
-            echo "Kafka not healthy yet. Waiting..."
+            echo "Kafka not healthy yet, waiting..."
             sleep 5
           done
           echo "Timed out waiting for Kafka to become healthy"
           exit 1
 
-      # Шаг 27: Проверка здоровья Kafka
+      # Шаг 28: Проверка здоровья Kafka (kafka-broker-api-versions)
       - name: Check Kafka Health
         run: |
           ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose exec kafka kafka-broker-api-versions --bootstrap-server localhost:9092"
-          echo "Kafka is alive and responding"
+          echo "Kafka is responding"
 
-      # Шаг 28: Удаление неиспользуемых Docker volumes
+      # Шаг 29: Удаление неиспользуемых Docker volumes
       - name: Remove unused Docker volumes
         run: |
           ssh dev@${{ secrets.SSH_HOST }} "docker volume prune -f"
 
-      # Шаг 29: Дополнительная отладка - Вывод PATH и переменных окружения
+      # Шаг 30: Дополнительная отладка - Вывод PATH и переменных окружения
       - name: Debug Environment
         run: |
           ssh dev@${{ secrets.SSH_HOST }} "echo \$PATH"

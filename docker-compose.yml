@@ -1,26 +1,24 @@
 services:
 
   kafka:
-    image: confluentinc/cp-kafka:7.4.0
+    image: bitnami/kafka:latest
     container_name: kafka
     environment:
-      # Настройки KRaft
-      KAFKA_KRAFT_BROKER_ID: 1
-      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
-      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
-      KAFKA_PROCESS_ROLES: broker,controller
-      KAFKA_CLUSTER_ID: "c5a38d23-5852-4f3e-6cf8-e5d7b81074df"  # Ваш уникальный ID
-      KAFKA_NUM_PARTITIONS: 1
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
-      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_CFG_PROCESS_ROLES: broker,controller
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CFG_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CFG_CLUSTER_ID: "c5a38d23-5852-4f3e-6cf8-e5d7b81074df"
+      KAFKA_CFG_NUM_PARTITIONS: 1
+      KAFKA_CFG_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_CFG_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_CFG_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
     ports:
       - "9092:9092"
       - "9093:9093"
     volumes:
-      - kafka_data:/var/lib/kafka/data
+      - kafka_data:/bitnami/kafka
     restart: unless-stopped
     networks:
       - app_network
@@ -29,8 +27,6 @@ services:
       interval: 30s
       timeout: 15s
       retries: 20
-    command: bash -c "kafka-storage.sh format -t c5a38d23-5852-4f3e-6cf8-e5d7b81074df -c /etc/kafka/kraft/server.properties && kafka-server-start.sh /etc/kafka/kraft/server.properties"
-
 
 
   postgres:

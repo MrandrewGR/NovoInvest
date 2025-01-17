@@ -1,14 +1,13 @@
 services:
-
   zookeeper:
     image: confluentinc/cp-zookeeper:7.4.0
     container_name: zookeeper
     restart: unless-stopped
     environment:
-      - ZOOKEEPER_CLIENT_PORT=2181
-      - ZOOKEEPER_TICK_TIME=2000
-      - ZOOKEEPER_INIT_LIMIT=5
-      - ZOOKEEPER_SYNC_LIMIT=2
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+      ZOOKEEPER_INIT_LIMIT: 5
+      ZOOKEEPER_SYNC_LIMIT: 2
     volumes:
       - zookeeper_data:/var/lib/zookeeper/data
       - zookeeper_log:/var/lib/zookeeper/log
@@ -20,15 +19,15 @@ services:
     container_name: kafka
     depends_on:
       - zookeeper
+    restart: unless-stopped
     environment:
-      - KAFKA_BROKER_ID=1
-      - KAFKA_ZOOKEEPER_CONNECT=zookeeper:2181
-      - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
-      - KAFKA_LISTENERS=PLAINTEXT://0.0.0.0:9092
-      - KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
     volumes:
       - kafka_data:/var/lib/kafka/data
-    restart: unless-stopped
     networks:
       - app_network
     healthcheck:
@@ -42,9 +41,9 @@ services:
     container_name: postgres
     restart: unless-stopped
     environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=tg_ubot
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: tg_ubot
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./services/db/init-db:/docker-entrypoint-initdb.d
@@ -58,7 +57,7 @@ services:
     env_file:
       - /home/dev/app/env/tg_ubot.env
     environment:
-      - SESSION_FILE=/app/session_name.session
+      SESSION_FILE: /app/session_name.session
     depends_on:
       kafka:
         condition: service_healthy
@@ -67,7 +66,7 @@ services:
       - app_network
     volumes:
       - /home/dev/app/session_name.session:/app/session_name.session
-      # Хранилище для state
+      # Для хранения state (если нужно)
       - tg_ubot_state_volume:/app/data
 
   db:
@@ -77,11 +76,11 @@ services:
     env_file:
       - ./env/.env
     environment:
-      - DB_HOST=postgres
-      - DB_PORT=5432
-      - DB_USER=postgres
-      - DB_PASSWORD=postgres
-      - DB_NAME=tg_ubot
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: tg_ubot
     depends_on:
       - kafka
       - postgres
@@ -95,10 +94,10 @@ services:
       context: ./services/bot
     env_file:
       - /home/dev/app/env/bot.env
-    restart: unless-stopped
     depends_on:
       kafka:
         condition: service_healthy
+    restart: unless-stopped
     networks:
       - app_network
     volumes:

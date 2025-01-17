@@ -10,7 +10,6 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      # Подключаем GitHub Secrets как переменные окружения
       SSH_HOST: ${{ secrets.SSH_HOST }}
       SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -32,16 +31,16 @@ jobs:
       - name: Determine changed services and important files
         id: changes
         run: |
-          # Определяем, какие сервисы поменялись
           CHANGED_SERVICES=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} -- services/ \
             | grep '^services/' \
             | awk -F/ '{print $2}' \
             | uniq || true)
+
+          # Превращаем список в одну строку, разделённую запятыми
           CHANGED_SERVICES=$(echo "$CHANGED_SERVICES" | paste -sd "," -)
           echo "Detected changed services: $CHANGED_SERVICES"
           echo "CHANGED_SERVICES=$CHANGED_SERVICES" >> $GITHUB_ENV
 
-          # Проверяем, изменились ли docker-compose.yml или сам deploy.yml
           CHANGED_DOCKER_COMPOSE=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} -- docker-compose.yml | wc -l)
           CHANGED_DEPLOY_YML=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} -- .github/workflows/deploy.yml | wc -l)
 
@@ -50,9 +49,6 @@ jobs:
           elif [ "$CHANGED_DOCKER_COMPOSE" -gt 0 ]; then
             echo "DOCKER_COMPOSE_CHANGED=true" >> $GITHUB_ENV
           fi
-
-          echo "CHANGED_DOCKER_COMPOSE=$CHANGED_DOCKER_COMPOSE"
-          echo "CHANGED_DEPLOY_YML=$CHANGED_DEPLOY_YML"
 
       - name: Debug Git Diff
         run: |
@@ -108,9 +104,8 @@ jobs:
       - name: Check Docker access for dev user
         run: ssh dev@${{ env.SSH_HOST }} "docker ps || echo 'No containers running'"
 
-      - name: Sync code to server
+      - name: Rsync code to server
         run: |
-          # Логика выбора, какие сервисы деплоить
           if [ "${{ env.FULL_DEPLOY }}" == "true" ]; then
             echo "FULL_DEPLOY => all services"
             SERVICES=$(ls -d services/*/ | xargs -n 1 basename | paste -sd "," -)
@@ -125,36 +120,29 @@ jobs:
             exit 0
           fi
 
-          # Отправляем код по SSH
+          # Отправляем весь проект, чтобы были docker-compose.yml и т.д.
           rsync -avz --delete --exclude '.git' --exclude '.github' --exclude 'env/' . dev@${{ env.SSH_HOST }}:/home/dev/app/
 
       - name: Create env files on server
         run: |
-          ssh dev@${{ env.SSH_HOST }} "mkdir -p /home/dev/app/env &&
-          echo 'TELEGRAM_API_ID=${TELEGRAM_API_ID}' > /home/dev/app/env/.env &&
-          echo 'TELEGRAM_API_HASH=${TELEGRAM_API_HASH}' >> /home/dev/app/env/.env &&
-          echo 'TELEGRAM_PHONE=${TELEGRAM_PHONE}' >> /home/dev/app/env/.env &&
-          echo 'TELEGRAM_TARGET_IDS=${TELEGRAM_TARGET_IDS}' >> /home/dev/app/env/.env &&
-          echo 'TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}' >> /home/dev/app/env/.env &&
-          echo 'KAFKA_BOOTSTRAP_SERVERS=kafka:9092' >> /home/dev/app/env/.env &&
-          echo 'TELEGRAM_API_ID=${TELEGRAM_API_ID}' > /home/dev/app/env/tg_ubot.env &&
-          echo 'TELEGRAM_API_HASH=${TELEGRAM_API_HASH}' >> /home/dev/app/env/tg_ubot.env &&
-          echo 'TELEGRAM_PHONE=${TELEGRAM_PHONE}' >> /home/dev/app/env/tg_ubot.env &&
-          echo 'TELEGRAM_TARGET_IDS=${TELEGRAM_TARGET_IDS}' >> /home/dev/app/env/tg_ubot.env &&
-          echo 'KAFKA_BOOTSTRAP_SERVERS=kafka:9092' >> /home/dev/app/env/tg_ubot.env &&
-          echo 'TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}' > /home/dev/app/env/bot.env &&
-          ls -la /home/dev/app/env/ &&
-          cat /home/dev/app/env/bot.env &&
-          cat /home/dev/app/env/.env"
+          ssh dev@${{ env.SSH_HOST }} "
+            mkdir -p /home/dev/app/env &&
+            echo 'TELEGRAM_API_ID=${TELEGRAM_API_ID}' > /home/dev/app/env/.env &&
+            echo 'TELEGRAM_API_HASH=${TELEGRAM_API_HASH}' >> /home/dev/app/env/.env &&
+            echo 'TELEGRAM_PHONE=${TELEGRAM_PHONE}' >> /home/dev/app/env/.env &&
+            echo 'TELEGRAM_TARGET_IDS=${TELEGRAM_TARGET_IDS}' >> /home/dev/app/env/.env &&
+            echo 'TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}' >> /home/dev/app/env/.env &&
+            echo 'KAFKA_BOOTSTRAP_SERVERS=kafka:9092' >> /home/dev/app/env/.env &&
+            echo 'TELEGRAM_API_ID=${TELEGRAM_API_ID}' > /home/dev/app/env/tg_ubot.env &&
+            echo 'TELEGRAM_API_HASH=${TELEGRAM_API_HASH}' >> /home/dev/app/env/tg_ubot.env &&
+            echo 'TELEGRAM_PHONE=${TELEGRAM_PHONE}' >> /home/dev/app/env/tg_ubot.env &&
+            echo 'TELEGRAM_TARGET_IDS=${TELEGRAM_TARGET_IDS}' >> /home/dev/app/env/tg_ubot.env &&
+            echo 'KAFKA_BOOTSTRAP_SERVERS=kafka:9092' >> /home/dev/app/env/tg_ubot.env &&
+            echo 'TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}' > /home/dev/app/env/bot.env
+          "
 
       - name: Verify main .env file
         run: ssh dev@${{ env.SSH_HOST }} "grep TELEGRAM_TARGET_IDS /home/dev/app/env/.env && echo 'Check .env done'"
-
-      - name: Fix buildx permission
-        run: |
-          ssh dev@${{ env.SSH_HOST }} "sudo mkdir -p /home/dev/.docker/buildx &&
-          sudo chown -R dev:dev /home/dev/.docker &&
-          sudo chmod -R 775 /home/dev/.docker"
 
       - name: Decode and upload Telethon session
         run: |
@@ -162,19 +150,27 @@ jobs:
           rsync -avz session_name.session dev@${{ env.SSH_HOST }}:/home/dev/app/
           rm session_name.session
 
+      # --- Опционально, чистое перезапускание Kafka (если действительно нужно) ---
+      - name: Stop Kafka
+        run: |
+          ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app && docker compose stop kafka"
+
+      - name: Clean up Zookeeper node for Kafka broker
+        run: |
+          ssh dev@${{ env.SSH_HOST }} "docker exec zookeeper zkCli.sh -server localhost:2181 delete /brokers/ids/1 || echo 'Node /brokers/ids/1 does not exist'"
+
+      # ---------------------------------------------------------------------------
+
       - name: Docker Compose Up
         run: |
           ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app &&
-          docker compose config -q &&
-          docker compose up -d --build --force-recreate"
-
-      - name: Clean up Zookeeper node for Kafka broker
-        run: ssh dev@${{ env.SSH_HOST }} "docker exec zookeeper zkCli.sh -server localhost:2181 delete /brokers/ids/1 || echo 'Node /brokers/ids/1 does not exist'"
+            docker compose config -q &&
+            docker compose up -d --build --force-recreate"
 
       - name: Recreate PostgreSQL volume if DB changed
         run: |
           if echo "${{ env.CHANGED_SERVICES }}" | grep -q "db"; then
-            ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app && docker compose stop db && docker compose rm -f -v db" &&
+            ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app && docker compose stop db && docker compose rm -f -v db"
             ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app && docker compose up -d db"
           else
             echo "DB not changed, skip volume recreate."
@@ -185,6 +181,7 @@ jobs:
 
       - name: View Logs for Deployed Services
         run: |
+          # Если полный деплой или изменён docker-compose — смотрим логи всех
           if [ "${{ env.FULL_DEPLOY }}" == "true" ] || [ "${{ env.DOCKER_COMPOSE_CHANGED }}" == "true" ]; then
             SERVICES=$(ls -d services/*/ | xargs -n 1 basename | paste -sd "," - | tr ',' ' ')
           else
@@ -219,8 +216,3 @@ jobs:
 
       - name: Remove unused Docker volumes
         run: ssh dev@${{ env.SSH_HOST }} "docker volume prune -f"
-
-      - name: Debug Environment
-        run: |
-          ssh dev@${{ env.SSH_HOST }} "echo \$PATH"
-          ssh dev@${{ env.SSH_HOST }} "env"

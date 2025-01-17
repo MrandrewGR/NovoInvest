@@ -1,36 +1,41 @@
 services:
 
-  kafka:
-    image: bitnami/kafka:latest
-    container_name: kafka
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.0
+    container_name: zookeeper
+    restart: unless-stopped
     environment:
-      # Настройки KRaft
-      KAFKA_CFG_PROCESS_ROLES: broker,controller
-      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
-      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_CFG_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
-      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
-      KAFKA_CFG_CLUSTER_ID: "c5a38d23-5852-4f3e-6cf8-e5d7b81074df"  # Уникальный ID
-      KAFKA_CFG_NODE_ID: 1
-      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT"
-      KAFKA_CFG_NUM_PARTITIONS: 1
-      KAFKA_CFG_OFFSETS_TOPIC_NUM_PARTITIONS: 1  # Установлено для __consumer_offsets
-      KAFKA_CFG_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_CFG_TRANSACTION_STATE_LOG_MIN_ISR: 1
-      KAFKA_CFG_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
-      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"  # Автосоздание топиков
+      - ZOOKEEPER_CLIENT_PORT=2181
+      - ZOOKEEPER_TICK_TIME=2000
+      - ZOOKEEPER_INIT_LIMIT=5
+      - ZOOKEEPER_SYNC_LIMIT=2
     volumes:
-      - kafka_data:/bitnami/kafka
-      - ./config/kafka/server.properties:/opt/bitnami/kafka/config/server.properties  # Монтирование файла конфигурации
+      - zookeeper_data:/var/lib/zookeeper/data
+      - zookeeper_log:/var/lib/zookeeper/log
+    networks:
+      - app_network
+
+  kafka:
+    image: confluentinc/cp-kafka:7.4.0
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    environment:
+      - KAFKA_BROKER_ID=1
+      - KAFKA_ZOOKEEPER_CONNECT=zookeeper:2181
+      - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
+      - KAFKA_LISTENERS=PLAINTEXT://0.0.0.0:9092
+      - KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1
+    volumes:
+      - kafka_data:/var/lib/kafka/data
     restart: unless-stopped
     networks:
       - app_network
     healthcheck:
       test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
-      interval: 30s
-      timeout: 15s
-      retries: 20
-    command: bash -c "kafka-storage.sh format -t c5a38d23-5852-4f3e-6cf8-e5d7b81074df -c /opt/bitnami/kafka/config/server.properties && kafka-server-start.sh /opt/bitnami/kafka/config/server.properties"
+      interval: 15s
+      timeout: 10s
+      retries: 10
 
   postgres:
     image: postgres:15-alpine
@@ -62,6 +67,7 @@ services:
       - app_network
     volumes:
       - /home/dev/app/session_name.session:/app/session_name.session
+      # Хранилище для state
       - tg_ubot_state_volume:/app/data
 
   db:
@@ -117,6 +123,10 @@ networks:
     driver: bridge
 
 volumes:
+  zookeeper_data:
+    driver: local
+  zookeeper_log:
+    driver: local
   kafka_data:
     driver: local
   pgdata:

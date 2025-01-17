@@ -1,4 +1,5 @@
 # .github/workflows/deploy.yml
+# очко не работает
 name: Deploy to Hetzner
 
 on:

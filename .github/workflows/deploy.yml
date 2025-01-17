@@ -159,6 +159,10 @@ jobs:
         run: |
           ssh dev@${{ env.SSH_HOST }} "docker exec zookeeper zkCli.sh -server localhost:2181 delete /brokers/ids/1 || echo 'Node /brokers/ids/1 does not exist'"
 
+      - name: Set correct permissions for Kafka data volume
+        run: |
+          ssh dev@${{ env.SSH_HOST }} "docker run --rm -v kafka_data:/data busybox chown -R 1000:1000 /data"
+
       # ---------------------------------------------------------------------------
 
       - name: Docker Compose Up

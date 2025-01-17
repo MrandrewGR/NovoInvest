@@ -167,8 +167,8 @@ jobs:
           sudo docker compose config -q &&
           sudo docker compose up -d --build --force-recreate"
 
-      - name: Clean up Zookeeper node for Kafka broker
-        run: ssh dev@${{ env.SSH_HOST }} "sudo docker exec zookeeper zkCli.sh -server localhost:2181 delete /brokers/ids/1 || echo 'Node /brokers/ids/1 does not exist'"
+      - name: Clean up Kafka broker in KRaft
+        run: ssh dev@${{ env.SSH_HOST }} "sudo docker exec kafka kafka-storage.sh remove --cluster-id <YOUR_CLUSTER_ID> --node-id 1 || echo 'Broker node does not exist or already removed'"
 
       - name: Recreate PostgreSQL volume if DB changed
         run: |

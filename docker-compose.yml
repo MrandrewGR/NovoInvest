@@ -1,6 +1,5 @@
 services:
 
-
   kafka:
     image: bitnami/kafka:latest
     container_name: kafka
@@ -22,6 +21,7 @@ services:
       KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"  # Автосоздание топиков
     volumes:
       - kafka_data:/bitnami/kafka
+      - ./config/kafka/server.properties:/opt/bitnami/kafka/config/server.properties  # Монтирование файла конфигурации
     restart: unless-stopped
     networks:
       - app_network
@@ -30,9 +30,7 @@ services:
       interval: 30s
       timeout: 15s
       retries: 20
-    command: bash -c "kafka-storage.sh format -t c5a38d23-5852-4f3e-6cf8-e5d7b81074df -c /opt/bitnami/kafka/config/kraft/server.properties && kafka-server-start.sh /opt/bitnami/kafka/config/kraft/server.properties"
-
-
+    command: bash -c "kafka-storage.sh format -t c5a38d23-5852-4f3e-6cf8-e5d7b81074df -c /opt/bitnami/kafka/config/server.properties && kafka-server-start.sh /opt/bitnami/kafka/config/server.properties"
 
   postgres:
     image: postgres:15-alpine

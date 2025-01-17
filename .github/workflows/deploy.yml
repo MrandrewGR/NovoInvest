@@ -101,14 +101,11 @@ jobs:
 
       - name: Verify Docker installation
         run: |
-          ssh dev@${{ env.SSH_HOST }} "sudo docker --version"
-          ssh dev@${{ env.SSH_HOST }} "sudo docker compose version"
+          ssh dev@${{ env.SSH_HOST }} "docker --version"
+          ssh dev@${{ env.SSH_HOST }} "docker compose version"
 
       - name: Check Docker access for dev user
-        run: ssh dev@${{ env.SSH_HOST }} "sudo docker ps || echo 'No containers running'"
-
-      - name: Remove existing Kafka data (опционально, будьте осторожны)
-        run: ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app && sudo docker compose down kafka && sudo docker volume rm $(sudo docker volume ls -qf name=kafka_data) || echo 'No existing Kafka data volume'"
+        run: ssh dev@${{ env.SSH_HOST }} "docker ps || echo 'No containers running'"
 
       - name: Sync code to server
         run: |
@@ -149,12 +146,9 @@ jobs:
           cat /home/dev/app/env/bot.env &&
           cat /home/dev/app/env/.env"
 
-      - name: Verify main .env file
-        run: ssh dev@${{ env.SSH_HOST }} "grep TELEGRAM_TARGET_IDS /home/dev/app/env/.env && echo 'Check .env done'"
-
       - name: Fix buildx permission
         run: |
-          ssh dev@${{ env.SSH_HOST }} "sudo mkdir -p /home/dev/.docker/buildx &&
+          ssh dev@${{ env.SSH_HOST }} "mkdir -p /home/dev/.docker/buildx &&
           sudo chown -R dev:dev /home/dev/.docker &&
           sudo chmod -R 775 /home/dev/.docker"
 
@@ -164,23 +158,37 @@ jobs:
           rsync -avz session_name.session dev@${{ env.SSH_HOST }}:/home/dev/app/
           rm session_name.session
 
+      - name: Create Kafka config directory on server
+        run: |
+          ssh dev@${{ env.SSH_HOST }} "mkdir -p /home/dev/app/config/kafka"
+
+      - name: Sync server.properties to server
+        run: |
+          rsync -avz config/kafka/server.properties dev@${{ env.SSH_HOST }}:/home/dev/app/config/kafka/server.properties
+
+      - name: Remove existing Kafka data volume
+        run: |
+          ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app &&
+          docker compose down &&
+          docker volume rm $(docker volume ls -qf name=kafka_data) || echo 'Kafka data volume does not exist'"
+
       - name: Docker Compose Up
         run: |
           ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app &&
-          sudo docker compose config -q &&
-          sudo docker compose up -d --build --force-recreate --remove-orphans"
+          docker compose config -q &&
+          docker compose up -d --build --force-recreate --remove-orphans"
 
       - name: Recreate PostgreSQL volume if DB changed
         run: |
           if echo "${{ env.CHANGED_SERVICES }}" | grep -q "db"; then
-            ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app && sudo docker compose stop db && sudo docker compose rm -f -v db" &&
-            ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app && sudo docker compose up -d db"
+            ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app && docker compose stop db && docker compose rm -f -v db" &&
+            ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app && docker compose up -d db"
           else
             echo "DB not changed, skip volume recreate."
           fi
 
       - name: Check Docker Compose Status
-        run: ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app && sudo docker compose ps"
+        run: ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app && docker compose ps"
 
       - name: View Logs for Deployed Services
         run: |
@@ -192,13 +200,13 @@ jobs:
 
           for service in $SERVICES; do
             echo "Logs for service: $service"
-            ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app && sudo docker compose logs $service --tail 50"
+            ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app && docker compose logs $service --tail 50"
           done
 
       - name: Wait for Kafka to be healthy
         run: |
           for i in {1..24}; do
-            status=$(ssh dev@${{ env.SSH_HOST }} "sudo docker inspect --format='{{.State.Health.Status}}' kafka 2>/dev/null")
+            status=$(ssh dev@${{ env.SSH_HOST }} "docker inspect --format='{{.State.Health.Status}}' kafka 2>/dev/null")
             if [ "$status" = "healthy" ]; then
               echo "Kafka is healthy now"
               break
@@ -213,11 +221,11 @@ jobs:
 
       - name: Check Kafka Health
         run: |
-          ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app && sudo docker compose exec kafka kafka-broker-api-versions --bootstrap-server localhost:9092"
+          ssh dev@${{ env.SSH_HOST }} "docker compose exec kafka kafka-broker-api-versions --bootstrap-server localhost:9092"
           echo "Kafka is responding"
 
       - name: Remove unused Docker volumes
-        run: ssh dev@${{ env.SSH_HOST }} "sudo docker volume prune -f"
+        run: ssh dev@${{ env.SSH_HOST }} "docker volume prune -f"
 
       - name: Debug Environment
         run: |
@@ -226,4 +234,4 @@ jobs:
 
       - name: Retrieve Kafka logs on failure
         if: failure()
-        run: ssh dev@${{ env.SSH_HOST }} "sudo docker logs kafka > kafka.log && cat kafka.log"
+        run: ssh dev@${{ env.SSH_HOST }} "docker logs kafka > kafka.log && cat kafka.log"

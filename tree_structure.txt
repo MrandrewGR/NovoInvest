@@ -1,5 +1,7 @@
 /Users/andreigrishin/Documents/GitHub/NovoInvest
-├── NovoInvest.mdj
+├── config
+│   └── kafka
+│       └── server.properties
 ├── docker-compose.yml
 ├── env
 ├── requirements
@@ -28,6 +30,7 @@
 │   │   ├── app
 │   │   │   ├── README.md
 │   │   │   ├── __init__.py
+│   │   │   ├── backfill_manager.py
 │   │   │   ├── chat_info.py
 │   │   │   ├── config.py
 │   │   │   ├── handlers
@@ -39,9 +42,9 @@
 │   │   │   ├── main.py
 │   │   │   ├── send_test_message.py
 │   │   │   ├── state.py
+│   │   │   ├── state_manager.py
 │   │   │   ├── test_entity.py
 │   │   │   └── utils.py
-│   │   ├── media
 │   │   ├── requirements.txt
 │   │   └── wait-for-it.sh
 │   └── xml_worker
@@ -57,7 +60,4 @@
 └── utils
     ├── get structure.py
     ├── get_chat_id.py
-    ├── get_session.py
-    ├── session_b64.txt
-    ├── session_name.session
-    └── session_name.session.b64
+    └── get_session.py

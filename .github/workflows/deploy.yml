@@ -90,8 +90,8 @@ jobs:
             sudo systemctl enable docker &&
             sudo systemctl start docker
           fi &&
-          sudo docker --version &&
-          sudo docker compose version"
+          docker --version &&
+          docker compose version"
 
       - name: Add user to Docker group
         run: ssh dev@${{ env.SSH_HOST }} "sudo usermod -aG docker dev"
@@ -166,11 +166,11 @@ jobs:
         run: |
           rsync -avz config/kafka/server.properties dev@${{ env.SSH_HOST }}:/home/dev/app/config/kafka/server.properties
 
-      - name: Remove existing Kafka data volume
+      - name: Remove existing Kafka data volume (ВАЖНО: УДАЛИТЕ ВСЕ ДАННЫЕ KAFKA)
         run: |
           ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app &&
           docker compose down &&
-          docker volume rm $(docker volume ls -qf name=kafka_data) || echo 'Kafka data volume does not exist'"
+          docker volume rm kafka_data || echo 'Kafka data volume does not exist'"
 
       - name: Docker Compose Up
         run: |

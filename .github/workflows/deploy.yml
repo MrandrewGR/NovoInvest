@@ -90,23 +90,22 @@ jobs:
             sudo systemctl enable docker &&
             sudo systemctl start docker
           fi &&
-          docker --version &&
-          docker compose version"
+          sudo docker --version &&
+          sudo docker compose version"
 
       - name: Add user to Docker group
         run: ssh dev@${{ env.SSH_HOST }} "sudo usermod -aG docker dev"
 
       - name: Reload SSH session to apply Docker group membership
-        run: |
-          ssh dev@${{ env.SSH_HOST }} "newgrp docker && echo 'Docker group membership applied.'"
+        run: ssh dev@${{ env.SSH_HOST }} "newgrp docker && echo 'Docker group membership applied.'"
 
       - name: Verify Docker installation
         run: |
-          ssh dev@${{ env.SSH_HOST }} "docker --version"
-          ssh dev@${{ env.SSH_HOST }} "docker compose version"
+          ssh dev@${{ env.SSH_HOST }} "sudo docker --version"
+          ssh dev@${{ env.SSH_HOST }} "sudo docker compose version"
 
       - name: Check Docker access for dev user
-        run: ssh dev@${{ env.SSH_HOST }} "docker ps || echo 'No containers running'"
+        run: ssh dev@${{ env.SSH_HOST }} "sudo docker ps || echo 'No containers running'"
 
       - name: Sync code to server
         run: |
@@ -165,23 +164,23 @@ jobs:
       - name: Docker Compose Up
         run: |
           ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app &&
-          docker compose config -q &&
-          docker compose up -d --build --force-recreate"
+          sudo docker compose config -q &&
+          sudo docker compose up -d --build --force-recreate"
 
       - name: Clean up Zookeeper node for Kafka broker
-        run: ssh dev@${{ env.SSH_HOST }} "docker exec zookeeper zkCli.sh -server localhost:2181 delete /brokers/ids/1 || echo 'Node /brokers/ids/1 does not exist'"
+        run: ssh dev@${{ env.SSH_HOST }} "sudo docker exec zookeeper zkCli.sh -server localhost:2181 delete /brokers/ids/1 || echo 'Node /brokers/ids/1 does not exist'"
 
       - name: Recreate PostgreSQL volume if DB changed
         run: |
           if echo "${{ env.CHANGED_SERVICES }}" | grep -q "db"; then
-            ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app && docker compose stop db && docker compose rm -f -v db" &&
-            ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app && docker compose up -d db"
+            ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app && sudo docker compose stop db && sudo docker compose rm -f -v db" &&
+            ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app && sudo docker compose up -d db"
           else
             echo "DB not changed, skip volume recreate."
           fi
 
       - name: Check Docker Compose Status
-        run: ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app && docker compose ps"
+        run: ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app && sudo docker compose ps"
 
       - name: View Logs for Deployed Services
         run: |
@@ -193,13 +192,13 @@ jobs:
 
           for service in $SERVICES; do
             echo "Logs for service: $service"
-            ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app && docker compose logs $service --tail 50"
+            ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app && sudo docker compose logs $service --tail 50"
           done
 
       - name: Wait for Kafka to be healthy
         run: |
           for i in {1..24}; do
-            status=$(ssh dev@${{ env.SSH_HOST }} "docker inspect --format='{{.State.Health.Status}}' kafka 2>/dev/null")
+            status=$(ssh dev@${{ env.SSH_HOST }} "sudo docker inspect --format='{{.State.Health.Status}}' kafka 2>/dev/null")
             if [ "$status" = "healthy" ]; then
               echo "Kafka is healthy now"
               break
@@ -214,11 +213,11 @@ jobs:
 
       - name: Check Kafka Health
         run: |
-          ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app && docker compose exec kafka kafka-broker-api-versions --bootstrap-server localhost:9092"
+          ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app && sudo docker compose exec kafka kafka-broker-api-versions --bootstrap-server localhost:9092"
           echo "Kafka is responding"
 
       - name: Remove unused Docker volumes
-        run: ssh dev@${{ env.SSH_HOST }} "docker volume prune -f"
+        run: ssh dev@${{ env.SSH_HOST }} "sudo docker volume prune -f"
 
       - name: Debug Environment
         run: |

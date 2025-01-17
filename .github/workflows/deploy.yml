@@ -1,13 +1,16 @@
----
 name: Deploy to Hetzner
+
 on:
   push:
     branches:
       - main
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
     env:
+      # Подключаем GitHub Secrets как переменные окружения
       SSH_HOST: ${{ secrets.SSH_HOST }}
       SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -16,35 +19,31 @@ jobs:
       TELEGRAM_PHONE: ${{ secrets.TELEGRAM_PHONE }}
       TELEGRAM_TARGET_IDS: ${{ secrets.TELEGRAM_TARGET_IDS }}
       SESSION_FILE_BASE64: ${{ secrets.SESSION_FILE_BASE64 }}
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
+
       - name: Set up Git
         run: git fetch origin main
+
       - name: Determine changed services and important files
         id: changes
-        run: >
+        run: |
           # Определяем, какие сервисы поменялись
-
           CHANGED_SERVICES=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} -- services/ \
             | grep '^services/' \
             | awk -F/ '{print $2}' \
             | uniq || true)
           CHANGED_SERVICES=$(echo "$CHANGED_SERVICES" | paste -sd "," -)
-
           echo "Detected changed services: $CHANGED_SERVICES"
-
           echo "CHANGED_SERVICES=$CHANGED_SERVICES" >> $GITHUB_ENV
 
-
           # Проверяем, изменились ли docker-compose.yml или сам deploy.yml
-
           CHANGED_DOCKER_COMPOSE=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} -- docker-compose.yml | wc -l)
-
           CHANGED_DEPLOY_YML=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} -- .github/workflows/deploy.yml | wc -l)
-
 
           if [ "$CHANGED_DEPLOY_YML" -gt 0 ]; then
             echo "FULL_DEPLOY=true" >> $GITHUB_ENV
@@ -52,75 +51,66 @@ jobs:
             echo "DOCKER_COMPOSE_CHANGED=true" >> $GITHUB_ENV
           fi
 
-
           echo "CHANGED_DOCKER_COMPOSE=$CHANGED_DOCKER_COMPOSE"
-
           echo "CHANGED_DEPLOY_YML=$CHANGED_DEPLOY_YML"
+
       - name: Debug Git Diff
-        run: >
+        run: |
           echo "CHANGED_SERVICES: $CHANGED_SERVICES"
-
           echo "DOCKER_COMPOSE_CHANGED: $DOCKER_COMPOSE_CHANGED"
-
           echo "FULL_DEPLOY: $FULL_DEPLOY"
-
           git diff --name-only ${{ github.event.before }} ${{ github.sha }} -- services/ docker-compose.yml .github/workflows/deploy.yml
+
       - name: Install rsync and jq
         run: |
           sudo apt-get update
           sudo apt-get install -y rsync jq
+
       - name: Set up SSH Agent
         uses: webfactory/ssh-agent@v0.5.3
         with:
           ssh-private-key: ${{ env.SSH_PRIVATE_KEY }}
+
       - name: Add known hosts
         run: ssh-keyscan -H ${{ env.SSH_HOST }} >> ~/.ssh/known_hosts
+
       - name: Test SSH Connection
         run: ssh dev@${{ env.SSH_HOST }} 'echo "SSH connection established"'
+
       - name: Install Docker and Docker Compose on server
-        run: >
-          ssh dev@${{ env.SSH_HOST }} <<EOF
-            # Переменные для репозитория Docker
-            arch=\$(dpkg --print-architecture)
-            distro=\$(lsb_release -cs)
+        run: |
+          ssh dev@${{ env.SSH_HOST }} "if ! command -v docker &> /dev/null; then
+            sudo apt-get update &&
+            sudo apt-get install -y ca-certificates curl gnupg lsb-release &&
+            sudo mkdir -p /etc/apt/keyrings &&
+            curl -fsSL https://download.docker.com/linux/debian/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg &&
+            echo \"deb [arch=\$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian \$(lsb_release -cs) stable\" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null &&
+            sudo apt-get update &&
+            sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin &&
+            sudo systemctl enable docker &&
+            sudo systemctl start docker
+          fi &&
+          docker --version &&
+          docker compose version"
 
-            if ! command -v docker &> /dev/null; then
-              sudo apt-get update
-              sudo apt-get install -y ca-certificates curl gnupg lsb-release
-              sudo mkdir -p /etc/apt/keyrings
-              curl -fsSL https://download.docker.com/linux/debian/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-
-              echo "deb [arch=\$arch signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian \$distro stable" \
-                | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-
-              sudo apt-get update
-              sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-              sudo systemctl enable docker
-              sudo systemctl start docker
-            fi
-
-            docker --version
-            docker compose version
-            EOF
       - name: Add user to Docker group
         run: ssh dev@${{ env.SSH_HOST }} "sudo usermod -aG docker dev"
+
       - name: Reload SSH session to apply Docker group membership
         run: |
-          ssh dev@${{ env.SSH_HOST }} <<EOF
-            newgrp docker << 'END'
-            echo 'Docker group membership applied.'
-            END
-            EOF
+          ssh dev@${{ env.SSH_HOST }} "newgrp docker && echo 'Docker group membership applied.'"
+
       - name: Verify Docker installation
         run: |
           ssh dev@${{ env.SSH_HOST }} "docker --version"
           ssh dev@${{ env.SSH_HOST }} "docker compose version"
+
       - name: Check Docker access for dev user
         run: ssh dev@${{ env.SSH_HOST }} "docker ps || echo 'No containers running'"
-      - name: Sync code to server
-        run: >
-          # Логика выбора, какие сервисы деплоить
 
+      - name: Sync code to server
+        run: |
+          # Логика выбора, какие сервисы деплоить
           if [ "${{ env.FULL_DEPLOY }}" == "true" ]; then
             echo "FULL_DEPLOY => all services"
             SERVICES=$(ls -d services/*/ | xargs -n 1 basename | paste -sd "," -)
@@ -135,118 +125,101 @@ jobs:
             exit 0
           fi
 
-
           # Отправляем код по SSH
-
           rsync -avz --delete --exclude '.git' --exclude '.github' --exclude 'env/' . dev@${{ env.SSH_HOST }}:/home/dev/app/
+
       - name: Create env files on server
-        run: >
-          ssh dev@${{ env.SSH_HOST }} <<EOF
-            mkdir -p /home/dev/app/env
+        run: |
+          ssh dev@${{ env.SSH_HOST }} "mkdir -p /home/dev/app/env &&
+          echo 'TELEGRAM_API_ID=${TELEGRAM_API_ID}' > /home/dev/app/env/.env &&
+          echo 'TELEGRAM_API_HASH=${TELEGRAM_API_HASH}' >> /home/dev/app/env/.env &&
+          echo 'TELEGRAM_PHONE=${TELEGRAM_PHONE}' >> /home/dev/app/env/.env &&
+          echo 'TELEGRAM_TARGET_IDS=${TELEGRAM_TARGET_IDS}' >> /home/dev/app/env/.env &&
+          echo 'TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}' >> /home/dev/app/env/.env &&
+          echo 'KAFKA_BOOTSTRAP_SERVERS=kafka:9092' >> /home/dev/app/env/.env &&
+          echo 'TELEGRAM_API_ID=${TELEGRAM_API_ID}' > /home/dev/app/env/tg_ubot.env &&
+          echo 'TELEGRAM_API_HASH=${TELEGRAM_API_HASH}' >> /home/dev/app/env/tg_ubot.env &&
+          echo 'TELEGRAM_PHONE=${TELEGRAM_PHONE}' >> /home/dev/app/env/tg_ubot.env &&
+          echo 'TELEGRAM_TARGET_IDS=${TELEGRAM_TARGET_IDS}' >> /home/dev/app/env/tg_ubot.env &&
+          echo 'KAFKA_BOOTSTRAP_SERVERS=kafka:9092' >> /home/dev/app/env/tg_ubot.env &&
+          echo 'TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}' > /home/dev/app/env/bot.env &&
+          ls -la /home/dev/app/env/ &&
+          cat /home/dev/app/env/bot.env &&
+          cat /home/dev/app/env/.env"
 
-            # .env
-            echo "TELEGRAM_API_ID=${TELEGRAM_API_ID}" > /home/dev/app/env/.env
-            echo "TELEGRAM_API_HASH=${TELEGRAM_API_HASH}" >> /home/dev/app/env/.env
-            echo "TELEGRAM_PHONE=${TELEGRAM_PHONE}" >> /home/dev/app/env/.env
-            echo "TELEGRAM_TARGET_IDS=${TELEGRAM_TARGET_IDS}" >> /home/dev/app/env/.env
-            echo "TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}" >> /home/dev/app/env/.env
-            echo "KAFKA_BOOTSTRAP_SERVERS=kafka:9092" >> /home/dev/app/env/.env
-
-            # tg_ubot.env
-            echo "TELEGRAM_API_ID=${TELEGRAM_API_ID}" > /home/dev/app/env/tg_ubot.env
-            echo "TELEGRAM_API_HASH=${TELEGRAM_API_HASH}" >> /home/dev/app/env/tg_ubot.env
-            echo "TELEGRAM_PHONE=${TELEGRAM_PHONE}" >> /home/dev/app/env/tg_ubot.env
-            echo "TELEGRAM_TARGET_IDS=${TELEGRAM_TARGET_IDS}" >> /home/dev/app/env/tg_ubot.env
-            echo "KAFKA_BOOTSTRAP_SERVERS=kafka:9092" >> /home/dev/app/env/tg_ubot.env
-
-            # bot.env
-            echo "TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}" > /home/dev/app/env/bot.env
-
-            echo "===== ENV FILES ====="
-            ls -la /home/dev/app/env/
-            echo "[bot.env]"
-            cat /home/dev/app/env/bot.env
-            echo "[.env]"
-            cat /home/dev/app/env/.env
-            EOF
       - name: Verify main .env file
-        run: ssh dev@${{ env.SSH_HOST }} "grep TELEGRAM_TARGET_IDS
-          /home/dev/app/env/.env && echo 'Check .env done'"
+        run: ssh dev@${{ env.SSH_HOST }} "grep TELEGRAM_TARGET_IDS /home/dev/app/env/.env && echo 'Check .env done'"
+
       - name: Fix buildx permission
         run: |
-          ssh dev@${{ env.SSH_HOST }} <<EOF
-            sudo mkdir -p /home/dev/.docker/buildx
-            sudo chown -R dev:dev /home/dev/.docker
-            sudo chmod -R 775 /home/dev/.docker
-            EOF
+          ssh dev@${{ env.SSH_HOST }} "sudo mkdir -p /home/dev/.docker/buildx &&
+          sudo chown -R dev:dev /home/dev/.docker &&
+          sudo chmod -R 775 /home/dev/.docker"
+
       - name: Decode and upload Telethon session
-        run: >
+        run: |
           echo "${{ env.SESSION_FILE_BASE64 }}" | base64 -d > session_name.session
-
           rsync -avz session_name.session dev@${{ env.SSH_HOST }}:/home/dev/app/
-
           rm session_name.session
+
       - name: Docker Compose Up
         run: |
-          ssh dev@${{ env.SSH_HOST }} <<EOF
-            cd /home/dev/app
-            docker compose config -q
-            docker compose up -d --build --force-recreate
-            EOF
+          ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app &&
+          docker compose config -q &&
+          docker compose up -d --build --force-recreate"
+
       - name: Clean up Zookeeper node for Kafka broker
-        run: >
-          ssh dev@${{ env.SSH_HOST }} "docker exec zookeeper zkCli.sh -server
-          localhost:2181 delete /brokers/ids/1 || echo 'Node /brokers/ids/1 does
-          not exist'"
+        run: ssh dev@${{ env.SSH_HOST }} "docker exec zookeeper zkCli.sh -server localhost:2181 delete /brokers/ids/1 || echo 'Node /brokers/ids/1 does not exist'"
+
       - name: Recreate PostgreSQL volume if DB changed
-        run: >
+        run: |
           if echo "${{ env.CHANGED_SERVICES }}" | grep -q "db"; then
-            ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app && docker compose stop db && docker compose rm -f -v db"
+            ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app && docker compose stop db && docker compose rm -f -v db" &&
             ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app && docker compose up -d db"
           else
             echo "DB not changed, skip volume recreate."
           fi
+
       - name: Check Docker Compose Status
         run: ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app && docker compose ps"
+
       - name: View Logs for Deployed Services
-        run: >
-          if [ "${{ env.FULL_DEPLOY }}" == "true" ] || [ "${{
-          env.DOCKER_COMPOSE_CHANGED }}" == "true" ]; then
+        run: |
+          if [ "${{ env.FULL_DEPLOY }}" == "true" ] || [ "${{ env.DOCKER_COMPOSE_CHANGED }}" == "true" ]; then
             SERVICES=$(ls -d services/*/ | xargs -n 1 basename | paste -sd "," - | tr ',' ' ')
           else
             SERVICES=$(echo "$CHANGED_SERVICES" | tr ',' ' ')
           fi
 
-
           for service in $SERVICES; do
             echo "Logs for service: $service"
             ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app && docker compose logs $service --tail 50"
           done
+
       - name: Wait for Kafka to be healthy
-        run: >
-          ssh dev@${{ env.SSH_HOST }} <<EOF
-            cd /home/dev/app
-            for i in {1..24}; do
-              status=\$(docker inspect --format='{{.State.Health.Status}}' kafka 2>/dev/null)
-              if [ "\$status" = "healthy" ]; then
-                echo "Kafka is healthy now"
-                exit 0
-              fi
-              echo "Kafka not healthy yet, waiting..."
-              sleep 5
-            done
+        run: |
+          for i in {1..24}; do
+            status=$(ssh dev@${{ env.SSH_HOST }} "docker inspect --format='{{.State.Health.Status}}' kafka 2>/dev/null")
+            if [ "$status" = "healthy" ]; then
+              echo "Kafka is healthy now"
+              break
+            fi
+            echo "Kafka not healthy yet, waiting..."
+            sleep 5
+          done
+          if [ "$status" != "healthy" ]; then
             echo "Timed out waiting for Kafka to become healthy"
             exit 1
-            EOF
-      - name: Check Kafka Health
-        run: >
-          ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app && docker compose exec kafka
-          kafka-broker-api-versions --bootstrap-server localhost:9092"
+          fi
 
-          echo "Kafka is responding"
-      - name: Remove unused Docker volumes
+      - name: Check Kafka Health
         run: |
-          ssh dev@${{ env.SSH_HOST }} "docker volume prune -f"
+          ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app && docker compose exec kafka kafka-broker-api-versions --bootstrap-server localhost:9092"
+          echo "Kafka is responding"
+
+      - name: Remove unused Docker volumes
+        run: ssh dev@${{ env.SSH_HOST }} "docker volume prune -f"
+
       - name: Debug Environment
         run: |
           ssh dev@${{ env.SSH_HOST }} "echo \$PATH"

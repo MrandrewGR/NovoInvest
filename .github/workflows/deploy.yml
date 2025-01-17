@@ -166,7 +166,7 @@ jobs:
         run: |
           rsync -avz config/kafka/server.properties dev@${{ env.SSH_HOST }}:/home/dev/app/config/kafka/server.properties
 
-      - name: Remove existing Kafka data volume (ВАЖНО: УДАЛИТЕ ВСЕ ДАННЫЕ KAFKA)
+      - name: Remove existing Kafka data volume
         run: |
           ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app &&
           docker compose down &&

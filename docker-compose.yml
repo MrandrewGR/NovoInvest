@@ -1,5 +1,6 @@
 services:
 
+
   kafka:
     image: bitnami/kafka:latest
     container_name: kafka
@@ -14,10 +15,11 @@ services:
       KAFKA_CFG_NODE_ID: 1
       KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT"
       KAFKA_CFG_NUM_PARTITIONS: 1
-      KAFKA_CFG_OFFSETS_TOPIC_NUM_PARTITIONS: 1  # Добавлено для уменьшения партиций __consumer_offsets
+      KAFKA_CFG_OFFSETS_TOPIC_NUM_PARTITIONS: 1  # Установлено для __consumer_offsets
       KAFKA_CFG_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_CFG_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_CFG_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"  # Автосоздание топиков
     volumes:
       - kafka_data:/bitnami/kafka
     restart: unless-stopped

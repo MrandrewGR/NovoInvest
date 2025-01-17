@@ -109,9 +109,6 @@ jobs:
             # Проверка установки Docker
             docker --version
             docker compose version
-
-            # Установка Docker Compose (в случае использования плагина)
-            # Если вы используете плагин, дополнительной установки не требуется
           EOF
 
       # Шаг 10: Добавление пользователя в группу Docker
@@ -130,15 +127,18 @@ jobs:
         run: |
           ssh dev@${{ secrets.SSH_HOST }} "docker --version"
           ssh dev@${{ secrets.SSH_HOST }} "docker compose version"
-          ssh dev@${{ secrets.SSH_HOST }} "which docker"
-          ssh dev@${{ secrets.SSH_HOST }} "which docker-compose"
 
       # Шаг 13: Проверка доступа к Docker для пользователя dev
       - name: Check Docker access for dev user
         run: |
           ssh dev@${{ secrets.SSH_HOST }} "docker ps"
 
-      # Шаг 14: Создание или обновление .env файла на сервере (если требуется)
+      # Шаг 14: Проверка синтаксиса docker-compose.yml
+      - name: Validate docker-compose.yml syntax
+        run: |
+          ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose config -q"
+
+      # Шаг 15: Создание или обновление .env файла на сервере (если требуется)
       - name: Create or Update .env file on server
         run: |
           ssh dev@${{ secrets.SSH_HOST }} "rm -f /home/dev/app/env/.env"
@@ -151,7 +151,7 @@ jobs:
           ssh dev@${{ secrets.SSH_HOST }} "echo TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }} >> /home/dev/app/env/.env"
           ssh dev@${{ secrets.SSH_HOST }} "echo KAFKA_BOOTSTRAP_SERVERS=kafka:9092 >> /home/dev/app/env/.env"
 
-      # Шаг 15: Создание или обновление .env файла для tg_ubot на сервере
+      # Шаг 16: Создание или обновление .env файла для tg_ubot на сервере
       - name: Create or Update tg_ubot .env file on server
         run: |
           ssh dev@${{ secrets.SSH_HOST }} "mkdir -p /home/dev/app/env"
@@ -161,17 +161,17 @@ jobs:
           ssh dev@${{ secrets.SSH_HOST }} "echo TELEGRAM_TARGET_IDS='${{ secrets.TELEGRAM_TARGET_IDS }}' >> /home/dev/app/env/tg_ubot.env"
           ssh dev@${{ secrets.SSH_HOST }} "echo KAFKA_BOOTSTRAP_SERVERS=kafka:9092 >> /home/dev/app/env/tg_ubot.env"
 
-      # Шаг 16: Заполнение bot.env
+      # Шаг 17: Заполнение bot.env
       - name: Create or Update bot .env file on server
         run: |
           ssh dev@${{ secrets.SSH_HOST }} "echo TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }} >> /home/dev/app/env/bot.env"
 
-      # Шаг 17: Проверка содержимого .env файла
+      # Шаг 18: Проверка содержимого .env файла
       - name: Verify .env file on server
         run: |
           ssh dev@${{ secrets.SSH_HOST }} "grep TELEGRAM_TARGET_IDS /home/dev/app/env/.env && echo 'Проверка завершена.'"
 
-      # Шаг 18: Deploy session_tg
+      # Шаг 19: Deploy session_tg
       - name: Decode and upload Telethon session
         run: |
           # 1. Создадим локальный файл session_name.session из секретной Base64 строки
@@ -183,17 +183,17 @@ jobs:
           # 3. Удалим временный файл
           rm session_name.session
 
-      # Шаг 19: Остановка сервиса Kafka для обеспечения чистого завершения
+      # Шаг 20: Остановка сервиса Kafka для обеспечения чистого завершения
       - name: Stop Kafka
         run: |
           ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose stop kafka"
 
-      # Шаг 20: Удаление устаревшего узла /brokers/ids/1 из Zookeeper
+      # Шаг 21: Удаление устаревшего узла /brokers/ids/1 из Zookeeper
       - name: Clean up Zookeeper node for Kafka broker
         run: |
           ssh dev@${{ secrets.SSH_HOST }} "docker exec zookeeper zkCli.sh -server localhost:2181 delete /brokers/ids/1 || echo 'Node /brokers/ids/1 does not exist'"
 
-      # Шаг 21: Деплой изменённых микросервисов или полный деплой
+      # Шаг 22: Деплой изменённых микросервисов или полный деплой
       - name: Deploy services
         run: |
           if [ "${{ env.FULL_DEPLOY }}" == "true" ]; then
@@ -223,7 +223,7 @@ jobs:
             ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose up -d --build --remove-orphans --force-recreate $SERVICES"
           fi
 
-      # Шаг 22: Recreate PostgreSQL volume if DB changed
+      # Шаг 23: Recreate PostgreSQL volume if DB changed
       - name: Recreate PostgreSQL volume if DB changed
         run: |
           # Предполагаем, что сервис называется "db" и в docker-compose.yml у вас он описывает Postgres.
@@ -236,12 +236,12 @@ jobs:
             echo "Сервис db не изменялся. Пропускаем пересоздание volume."
           fi
 
-      # Шаг 23: Проверка статуса Docker Compose
+      # Шаг 24: Проверка статуса Docker Compose
       - name: Check Docker Compose Status
         run: |
           ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose ps"
 
-      # Шаг 24: Просмотр логов для деплоенных микросервисов
+      # Шаг 25: Просмотр логов для деплоенных микросервисов
       - name: View Logs for Deployed Services
         run: |
           if [ "${{ env.FULL_DEPLOY }}" == "true" ] || [ "${{ env.DOCKER_COMPOSE_CHANGED }}" == "true" ]; then
@@ -255,12 +255,12 @@ jobs:
             ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose logs $service --tail 50"
           done
 
-      # Шаг 25: Обеспечение работы Kafka после деплоя
+      # Шаг 26: Обеспечение работы Kafka после деплоя
       - name: Ensure Kafka is running
         run: |
           ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose up -d kafka"
 
-      # Шаг 26: Проверка состояния Kafka
+      # Шаг 27: Проверка состояния Kafka
       - name: Wait for Kafka to be healthy
         run: |
           # Запускаем Kafka (если ещё не запущен)
@@ -281,21 +281,16 @@ jobs:
           echo "Timed out waiting for Kafka to become healthy"
           exit 1
 
-      # Шаг 27: Проверка здоровья Kafka
+      # Шаг 28: Проверка здоровья Kafka
       - name: Check Kafka Health
         run: |
           ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose exec kafka kafka-broker-api-versions --bootstrap-server localhost:9092"
           echo "Kafka is alive and responding"
 
-      # Шаг 28: Удаление неиспользуемых Docker volumes
+      # Шаг 29: Удаление неиспользуемых Docker volumes
       - name: Remove unused Docker volumes
         run: |
           ssh dev@${{ secrets.SSH_HOST }} "docker volume prune -f"
-
-      # Шаг 29: Проверка синтаксиса docker-compose.yml
-      - name: Validate docker-compose.yml syntax
-        run: |
-          ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose config"
 
       # Шаг 30: Дополнительная отладка - Вывод PATH и переменных окружения
       - name: Debug Environment

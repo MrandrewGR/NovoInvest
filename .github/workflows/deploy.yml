@@ -108,7 +108,7 @@ jobs:
         run: ssh dev@${{ env.SSH_HOST }} "sudo docker ps || echo 'No containers running'"
 
       - name: Remove existing Kafka data (опционально, будьте осторожны)
-        run: ssh dev@${{ env.SSH_HOST }} "sudo docker compose down -v kafka_data && sudo docker volume rm app_kafka_data || echo 'No existing Kafka data volume'"
+        run: ssh dev@${{ env.SSH_HOST }} "sudo docker compose down -v kafka_data && sudo docker volume rm kafka_data || echo 'No existing Kafka data volume'"
 
       - name: Sync code to server
         run: |

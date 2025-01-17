@@ -87,9 +87,9 @@ jobs:
               sudo apt-get update
               sudo apt-get install -y ca-certificates curl gnupg lsb-release
               sudo mkdir -p /etc/apt/keyrings
-              curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+              curl -fsSL https://download.docker.com/linux/debian/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
               echo \
-                "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+                "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian \
                 $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
               sudo apt-get update
               sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
@@ -160,7 +160,7 @@ jobs:
           ssh dev@${{ secrets.SSH_HOST }} "echo TELEGRAM_TARGET_IDS='${{ secrets.TELEGRAM_TARGET_IDS }}' >> /home/dev/app/env/tg_ubot.env"
           ssh dev@${{ secrets.SSH_HOST }} "echo KAFKA_BOOTSTRAP_SERVERS=kafka:9092 >> /home/dev/app/env/tg_ubot.env"
 
-      # Шаг 17: заполнение bot.env
+      # Шаг 17: Заполнение bot.env
       - name: Create or Update bot .env file on server
         run: |
           ssh dev@${{ secrets.SSH_HOST }} "echo TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }} >> /home/dev/app/env/bot.env"

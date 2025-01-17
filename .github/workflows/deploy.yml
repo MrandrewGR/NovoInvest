@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      # Подключаем Secrets к env, чтобы их значения не были пустыми
+      # Подключаем GitHub Secrets
       SSH_HOST: ${{ secrets.SSH_HOST }}
       SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
 
@@ -21,17 +21,15 @@ jobs:
       SESSION_FILE_BASE64: ${{ secrets.SESSION_FILE_BASE64 }}
 
     steps:
-      # 1. Клонирование репозитория с полной историей
+
       - name: Checkout code
         uses: actions/checkout@v3
         with:
-          fetch-depth: 0  # Загружает всю историю коммитов
+          fetch-depth: 0  # Загружаем всю историю
 
-      # 2. Настройка Git для обнаружения изменений
       - name: Set up Git
         run: git fetch origin main
 
-      # 3. Определение изменённых микросервисов и важных файлов
       - name: Determine changed services and important files
         id: changes
         run: |
@@ -55,7 +53,6 @@ jobs:
           echo "CHANGED_DOCKER_COMPOSE=$CHANGED_DOCKER_COMPOSE"
           echo "CHANGED_DEPLOY_YML=$CHANGED_DEPLOY_YML"
 
-      # 4. Отладка - вывод изменённых микросервисов и списка изменённых файлов
       - name: Debug Git Diff
         run: |
           echo "CHANGED_SERVICES: $CHANGED_SERVICES"
@@ -63,27 +60,22 @@ jobs:
           echo "FULL_DEPLOY: $FULL_DEPLOY"
           git diff --name-only ${{ github.event.before }} ${{ github.sha }} -- services/ docker-compose.yml .github/workflows/deploy.yml
 
-      # 5. Установка rsync и jq
       - name: Install rsync and jq
         run: |
           sudo apt-get update
           sudo apt-get install -y rsync jq
 
-      # 6. Настройка SSH Agent
       - name: Set up SSH Agent
         uses: webfactory/ssh-agent@v0.5.3
         with:
           ssh-private-key: ${{ env.SSH_PRIVATE_KEY }}
 
-      # 7. known_hosts
       - name: Add known hosts
         run: ssh-keyscan -H ${{ env.SSH_HOST }} >> ~/.ssh/known_hosts
 
-      # 8. Тест SSH
       - name: Test SSH Connection
         run: ssh dev@${{ env.SSH_HOST }} 'echo "SSH connection established"'
 
-      # 9. Установка Docker + Docker Compose (если нужно)
       - name: Install Docker and Docker Compose on server
         run: |
           ssh dev@${{ env.SSH_HOST }} <<EOF
@@ -106,11 +98,9 @@ jobs:
             docker compose version
 EOF
 
-      # 10. Добавление пользователя dev в группу docker
       - name: Add user to Docker group
         run: ssh dev@${{ env.SSH_HOST }} "sudo usermod -aG docker dev"
 
-      # 11. (Опционально) Применение изменений групп
       - name: Reload SSH session to apply Docker group membership
         run: |
           ssh dev@${{ env.SSH_HOST }} <<EOF
@@ -119,17 +109,14 @@ EOF
             END
 EOF
 
-      # 12. Проверка Docker
       - name: Verify Docker installation
         run: |
           ssh dev@${{ env.SSH_HOST }} "docker --version"
           ssh dev@${{ env.SSH_HOST }} "docker compose version"
 
-      # 13. Проверка доступа к Docker
       - name: Check Docker access for dev user
         run: ssh dev@${{ env.SSH_HOST }} "docker ps || echo 'No containers running'"
 
-      # 14. rsync проекта, исключая env/
       - name: Sync code to server
         run: |
           if [ "${{ env.FULL_DEPLOY }}" == "true" ]; then
@@ -148,7 +135,6 @@ EOF
 
           rsync -avz --delete --exclude '.git' --exclude '.github' --exclude 'env/' . dev@${{ env.SSH_HOST }}:/home/dev/app/
 
-      # 15. Создание .env, tg_ubot.env, bot.env (без 'EOF')
       - name: Create env files on server
         run: |
           ssh dev@${{ env.SSH_HOST }} <<EOF
@@ -180,11 +166,9 @@ EOF
             cat /home/dev/app/env/.env
 EOF
 
-      # 16. Проверка содержимого .env
       - name: Verify main .env file
         run: ssh dev@${{ env.SSH_HOST }} "grep TELEGRAM_TARGET_IDS /home/dev/app/env/.env && echo 'Check .env done'"
 
-      # 16.1. Fix buildx permission
       - name: Fix buildx permission
         run: |
           ssh dev@${{ env.SSH_HOST }} <<EOF
@@ -193,14 +177,12 @@ EOF
             sudo chmod -R 775 /home/dev/.docker
 EOF
 
-      # 17. Загрузка Telethon session
       - name: Decode and upload Telethon session
         run: |
           echo "${{ env.SESSION_FILE_BASE64 }}" | base64 -d > session_name.session
           rsync -avz session_name.session dev@${{ env.SSH_HOST }}:/home/dev/app/
           rm session_name.session
 
-      # 18. Запуск контейнеров (включая Kafka)
       - name: Docker Compose Up
         run: |
           ssh dev@${{ env.SSH_HOST }} <<EOF
@@ -209,12 +191,10 @@ EOF
             docker compose up -d --build --force-recreate
 EOF
 
-      # 19. (Опционально) Удаление /brokers/ids/1 из Zookeeper
       - name: Clean up Zookeeper node for Kafka broker
         run: |
           ssh dev@${{ env.SSH_HOST }} "docker exec zookeeper zkCli.sh -server localhost:2181 delete /brokers/ids/1 || echo 'Node /brokers/ids/1 does not exist'"
 
-      # 20. Пересоздать volume PostgreSQL, если сервис db изменился
       - name: Recreate PostgreSQL volume if DB changed
         run: |
           if echo "${{ env.CHANGED_SERVICES }}" | grep -q "db"; then
@@ -224,11 +204,9 @@ EOF
             echo "DB not changed, skip volume recreate."
           fi
 
-      # 21. Проверка статуса Docker Compose
       - name: Check Docker Compose Status
         run: ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app && docker compose ps"
 
-      # 22. Просмотр логов для деплоенных микросервисов
       - name: View Logs for Deployed Services
         run: |
           if [ "${{ env.FULL_DEPLOY }}" == "true" ] || [ "${{ env.DOCKER_COMPOSE_CHANGED }}" == "true" ]; then
@@ -242,7 +220,6 @@ EOF
             ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app && docker compose logs $service --tail 50"
           done
 
-      # 23. Wait for Kafka to be healthy (через docker inspect)
       - name: Wait for Kafka to be healthy
         run: |
           ssh dev@${{ env.SSH_HOST }} <<EOF
@@ -260,18 +237,15 @@ EOF
             exit 1
 EOF
 
-      # 24. Проверка здоровья Kafka
       - name: Check Kafka Health
         run: |
           ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app && docker compose exec kafka kafka-broker-api-versions --bootstrap-server localhost:9092"
           echo "Kafka is responding"
 
-      # 25. Удаление неиспользуемых Docker volumes
       - name: Remove unused Docker volumes
         run: |
           ssh dev@${{ env.SSH_HOST }} "docker volume prune -f"
 
-      # 26. Дополнительная отладка - Вывод PATH и переменных окружения
       - name: Debug Environment
         run: |
           ssh dev@${{ env.SSH_HOST }} "echo \$PATH"

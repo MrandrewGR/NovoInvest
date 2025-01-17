@@ -9,10 +9,9 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      # Подключаем GitHub Secrets
+      # GitHub Secrets (убедитесь, что все заданы)
       SSH_HOST: ${{ secrets.SSH_HOST }}
       SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
       TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
@@ -21,11 +20,10 @@ jobs:
       SESSION_FILE_BASE64: ${{ secrets.SESSION_FILE_BASE64 }}
 
     steps:
-
       - name: Checkout code
         uses: actions/checkout@v3
         with:
-          fetch-depth: 0  # Загружаем всю историю
+          fetch-depth: 0
 
       - name: Set up Git
         run: git fetch origin main

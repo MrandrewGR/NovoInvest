@@ -166,6 +166,15 @@ jobs:
       - name: Verify main .env file
         run: ssh dev@${{ secrets.SSH_HOST }} "grep TELEGRAM_TARGET_IDS /home/dev/app/env/.env && echo 'Check .env done'"
 
+      # Шаг 16.1: Fix buildx permission
+      - name: Fix buildx permission
+        run: |
+          ssh dev@${{ secrets.SSH_HOST }} << 'EOF'
+            sudo mkdir -p /home/dev/.docker/buildx
+            sudo chown -R dev:dev /home/dev/.docker
+            sudo chmod -R 775 /home/dev/.docker
+          EOF
+
       # Шаг 17: Загрузка Telethon session
       - name: Decode and upload Telethon session
         run: |

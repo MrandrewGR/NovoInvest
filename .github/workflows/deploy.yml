@@ -12,11 +12,12 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
 
-    # 1) Здесь загружаем GitHub Secrets в переменные окружения,
-    #    чтобы они были доступны внутри наших шагов.
+    # Подключаем Secrets к env, чтобы внутри шагов
+    # переменные были не пустыми (TELEGRAM_BOT_TOKEN и т.п.).
     env:
       SSH_HOST: ${{ secrets.SSH_HOST }}
       SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
       TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
@@ -160,7 +161,6 @@ jobs:
             echo "TELEGRAM_API_ID=${TELEGRAM_API_ID}" > /home/dev/app/env/.env
             echo "TELEGRAM_API_HASH=${TELEGRAM_API_HASH}" >> /home/dev/app/env/.env
             echo "TELEGRAM_PHONE=${TELEGRAM_PHONE}" >> /home/dev/app/env/.env
-            # Без лишних кавычек (Pydantic ждёт JSON):
             echo "TELEGRAM_TARGET_IDS=${TELEGRAM_TARGET_IDS}" >> /home/dev/app/env/.env
             echo "TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}" >> /home/dev/app/env/.env
             echo "KAFKA_BOOTSTRAP_SERVERS=kafka:9092" >> /home/dev/app/env/.env
@@ -208,10 +208,8 @@ jobs:
         run: |
           ssh dev@${{ env.SSH_HOST }} << 'EOF'
             cd /home/dev/app
-            # Проверяем синтаксис (теперь env-файлы уже есть!)
+            # Проверяем синтаксис (env-файлы уже есть!)
             docker compose config -q
-
-            # Запускаем контейнеры
             docker compose up -d --build --force-recreate
           EOF
 
@@ -257,16 +255,15 @@ jobs:
       - name: Ensure Kafka is running
         run: ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app && docker compose up -d kafka"
 
-      # Шаг 25: Проверка состояния Kafka (ждём Healthy)
+      # Шаг 25: Проверка состояния Kafka (ждём Healthy) - через docker inspect
       - name: Wait for Kafka to be healthy
         run: |
           ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app && docker compose up -d kafka"
           for i in {1..24}; do
-            # Поскольку на сервере Docker Compose v2.32.4, мы можем использовать --format json
-            status=$(ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app && docker compose ps --format json" \
-              | jq -r '.[] | select(.Service == "kafka") | .Health')
+            # Проверяем Health напрямую через docker inspect <container_name='kafka'>
+            status=$(ssh dev@${{ env.SSH_HOST }} "docker inspect --format='{{.State.Health.Status}}' kafka" 2>/dev/null)
 
-            if [ "$status" = "healthy" ]; then
+            if [ \"$status\" = "healthy" ]; then
               echo "Kafka is healthy now"
               exit 0
             fi

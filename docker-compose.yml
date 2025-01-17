@@ -11,7 +11,7 @@ services:
       KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
       KAFKA_PROCESS_ROLES: broker,controller
-      KAFKA_CLUSTER_ID: "c5a38d23-5852-4f3e-6cf8-e5d7b81074df"  # Замените на ваш уникальный ID
+      KAFKA_CLUSTER_ID: "c5a38d23-5852-4f3e-6cf8-e5d7b81074df"  # Ваш уникальный ID
       KAFKA_NUM_PARTITIONS: 1
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
@@ -29,6 +29,8 @@ services:
       interval: 30s
       timeout: 15s
       retries: 20
+    command: bash -c "kafka-storage.sh format -t c5a38d23-5852-4f3e-6cf8-e5d7b81074df -c /etc/kafka/kraft/server.properties && kafka-server-start.sh /etc/kafka/kraft/server.properties"
+
 
 
   postgres:

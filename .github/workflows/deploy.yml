@@ -59,9 +59,29 @@ jobs:
           echo "FULL_DEPLOY: $FULL_DEPLOY"
           git diff --name-only ${{ github.event.before }} ${{ github.sha }} -- services/ docker-compose.yml .github/workflows/deploy.yml
 
-      # Шаг 5: Установка rsync и других зависимостей
-      - name: Install rsync and dependencies
-        run: sudo apt-get update && sudo apt-get install -y rsync jq
+      # Шаг 5: Установка rsync и других зависимостей с проверкой актуальности версий
+      - name: Install rsync and dependencies if outdated
+        run: |
+          # Функция для проверки и установки пакета
+          install_if_outdated() {
+            PACKAGE=$1
+            INSTALLED_VERSION=$(dpkg -s $PACKAGE | grep '^Version:' | awk '{print $2}')
+            AVAILABLE_VERSION=$(apt-cache policy $PACKAGE | grep 'Candidate:' | awk '{print $2}')
+            
+            if [ "$INSTALLED_VERSION" != "$AVAILABLE_VERSION" ]; then
+              echo "$PACKAGE is outdated (installed: $INSTALLED_VERSION, available: $AVAILABLE_VERSION). Updating..."
+              sudo apt-get update
+              sudo apt-get install -y $PACKAGE
+            else
+              echo "$PACKAGE is up to date (version: $INSTALLED_VERSION). Skipping installation."
+            fi
+          }
+
+          # Проверка и установка rsync
+          install_if_outdated rsync
+
+          # Проверка и установка jq
+          install_if_outdated jq
 
       # Шаг 6: Настройка SSH Agent с использованием секретного ключа
       - name: Set up SSH Agent
@@ -133,52 +153,7 @@ jobs:
         run: |
           ssh dev@${{ secrets.SSH_HOST }} "docker ps || echo 'No containers are running.'"
 
-      # Шаг 14: Создание или обновление .env файла на сервере (если требуется)
-      - name: Create or Update .env file on server
-        run: |
-          ssh dev@${{ secrets.SSH_HOST }} "rm -f /home/dev/app/env/.env"
-          
-          ssh dev@${{ secrets.SSH_HOST }} "mkdir -p /home/dev/app/env"
-          ssh dev@${{ secrets.SSH_HOST }} "echo TELEGRAM_API_ID=${{ secrets.TELEGRAM_API_ID }} > /home/dev/app/env/.env"
-          ssh dev@${{ secrets.SSH_HOST }} "echo TELEGRAM_API_HASH=${{ secrets.TELEGRAM_API_HASH }} >> /home/dev/app/env/.env"
-          ssh dev@${{ secrets.SSH_HOST }} "echo TELEGRAM_PHONE=${{ secrets.TELEGRAM_PHONE }} >> /home/dev/app/env/.env"
-          ssh dev@${{ secrets.SSH_HOST }} "echo TELEGRAM_TARGET_IDS='${{ secrets.TELEGRAM_TARGET_IDS }}' >> /home/dev/app/env/.env"
-          ssh dev@${{ secrets.SSH_HOST }} "echo TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }} >> /home/dev/app/env/.env"
-          ssh dev@${{ secrets.SSH_HOST }} "echo KAFKA_BOOTSTRAP_SERVERS=kafka:9092 >> /home/dev/app/env/.env"
-
-      # Шаг 15: Создание или обновление .env файла для tg_ubot на сервере
-      - name: Create or Update tg_ubot .env file on server
-        run: |
-          ssh dev@${{ secrets.SSH_HOST }} "mkdir -p /home/dev/app/env"
-          ssh dev@${{ secrets.SSH_HOST }} "echo TELEGRAM_API_ID=${{ secrets.TELEGRAM_API_ID }} > /home/dev/app/env/tg_ubot.env"
-          ssh dev@${{ secrets.SSH_HOST }} "echo TELEGRAM_API_HASH=${{ secrets.TELEGRAM_API_HASH }} >> /home/dev/app/env/tg_ubot.env"
-          ssh dev@${{ secrets.SSH_HOST }} "echo TELEGRAM_PHONE='${{ secrets.TELEGRAM_PHONE }}' >> /home/dev/app/env/tg_ubot.env"
-          ssh dev@${{ secrets.SSH_HOST }} "echo TELEGRAM_TARGET_IDS='${{ secrets.TELEGRAM_TARGET_IDS }}' >> /home/dev/app/env/tg_ubot.env"
-          ssh dev@${{ secrets.SSH_HOST }} "echo KAFKA_BOOTSTRAP_SERVERS=kafka:9092 >> /home/dev/app/env/tg_ubot.env"
-
-      # Шаг 16: Заполнение bot.env
-      - name: Create or Update bot .env file on server
-        run: |
-          ssh dev@${{ secrets.SSH_HOST }} "echo TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }} >> /home/dev/app/env/bot.env"
-
-      # Шаг 17: Проверка содержимого .env файла
-      - name: Verify .env file on server
-        run: |
-          ssh dev@${{ secrets.SSH_HOST }} "grep TELEGRAM_TARGET_IDS /home/dev/app/env/.env && echo 'Проверка завершена.'"
-
-      # Шаг 18: Deploy session_tg
-      - name: Decode and upload Telethon session
-        run: |
-          # 1. Создадим локальный файл session_name.session из секретной Base64 строки
-          echo "${{ secrets.SESSION_FILE_BASE64 }}" | base64 -d > session_name.session
-          
-          # 2. Передадим этот файл на сервер, в /home/dev/app/ (или другую директорию)
-          rsync -avz session_name.session dev@${{ secrets.SSH_HOST }}:/home/dev/app/
-          
-          # 3. Удалим временный файл
-          rm session_name.session
-
-      # Шаг 19: Деплой изменённых микросервисов или полный деплой
+      # Шаг 14: Deploy services (rsync с исключением директории env/)
       - name: Deploy services
         run: |
           if [ "${{ env.FULL_DEPLOY }}" == "true" ]; then
@@ -195,8 +170,8 @@ jobs:
             exit 0
           fi
 
-          # Удаление старых файлов (rsync с --delete)
-          rsync -avz --delete --exclude '.git' --exclude '.github' . dev@${{ secrets.SSH_HOST }}:/home/dev/app/
+          # Удаление старых файлов (rsync с --delete и исключением env/)
+          rsync -avz --delete --exclude '.git' --exclude '.github' --exclude 'env/' . dev@${{ secrets.SSH_HOST }}:/home/dev/app/
 
           # Проверка синтаксиса docker-compose.yml после копирования
           ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose config -q"
@@ -208,6 +183,53 @@ jobs:
             # Иначе поднимаем только изменённые сервисы
             ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose up -d --build --remove-orphans --force-recreate $SERVICES"
           fi
+
+      # Шаг 15: Создание или обновление .env файла на сервере (после rsync)
+      - name: Create or Update .env file on server
+        run: |
+          ssh dev@${{ secrets.SSH_HOST }} "mkdir -p /home/dev/app/env"
+
+          ssh dev@${{ secrets.SSH_HOST }} "echo TELEGRAM_API_ID=${{ secrets.TELEGRAM_API_ID }} > /home/dev/app/env/.env"
+          ssh dev@${{ secrets.SSH_HOST }} "echo TELEGRAM_API_HASH=${{ secrets.TELEGRAM_API_HASH }} >> /home/dev/app/env/.env"
+          ssh dev@${{ secrets.SSH_HOST }} "echo TELEGRAM_PHONE=${{ secrets.TELEGRAM_PHONE }} >> /home/dev/app/env/.env"
+          ssh dev@${{ secrets.SSH_HOST }} "echo TELEGRAM_TARGET_IDS='${{ secrets.TELEGRAM_TARGET_IDS }}' >> /home/dev/app/env/.env"
+          ssh dev@${{ secrets.SSH_HOST }} "echo TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }} >> /home/dev/app/env/.env"
+          ssh dev@${{ secrets.SSH_HOST }} "echo KAFKA_BOOTSTRAP_SERVERS=kafka:9092 >> /home/dev/app/env/.env"
+
+      # Шаг 16: Создание или обновление .env файла для tg_ubot на сервере (после rsync)
+      - name: Create or Update tg_ubot .env file on server
+        run: |
+          ssh dev@${{ secrets.SSH_HOST }} "mkdir -p /home/dev/app/env"
+
+          ssh dev@${{ secrets.SSH_HOST }} "echo TELEGRAM_API_ID=${{ secrets.TELEGRAM_API_ID }} > /home/dev/app/env/tg_ubot.env"
+          ssh dev@${{ secrets.SSH_HOST }} "echo TELEGRAM_API_HASH=${{ secrets.TELEGRAM_API_HASH }} >> /home/dev/app/env/tg_ubot.env"
+          ssh dev@${{ secrets.SSH_HOST }} "echo TELEGRAM_PHONE='${{ secrets.TELEGRAM_PHONE }}' >> /home/dev/app/env/tg_ubot.env"
+          ssh dev@${{ secrets.SSH_HOST }} "echo TELEGRAM_TARGET_IDS='${{ secrets.TELEGRAM_TARGET_IDS }}' >> /home/dev/app/env/tg_ubot.env"
+          ssh dev@${{ secrets.SSH_HOST }} "echo KAFKA_BOOTSTRAP_SERVERS=kafka:9092 >> /home/dev/app/env/tg_ubot.env"
+
+      # Шаг 17: Заполнение bot.env (после rsync)
+      - name: Create or Update bot .env file on server
+        run: |
+          ssh dev@${{ secrets.SSH_HOST }} "mkdir -p /home/dev/app/env"
+
+          ssh dev@${{ secrets.SSH_HOST }} "echo TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }} >> /home/dev/app/env/bot.env"
+
+      # Шаг 18: Проверка содержимого .env файла
+      - name: Verify .env file on server
+        run: |
+          ssh dev@${{ secrets.SSH_HOST }} "grep TELEGRAM_TARGET_IDS /home/dev/app/env/.env && echo 'Проверка завершена.'"
+
+      # Шаг 19: Deploy session_tg
+      - name: Decode and upload Telethon session
+        run: |
+          # 1. Создадим локальный файл session_name.session из секретной Base64 строки
+          echo "${{ secrets.SESSION_FILE_BASE64 }}" | base64 -d > session_name.session
+          
+          # 2. Передадим этот файл на сервер, в /home/dev/app/ (или другую директорию)
+          rsync -avz session_name.session dev@${{ secrets.SSH_HOST }}:/home/dev/app/
+          
+          # 3. Удалим временный файл
+          rm session_name.session
 
       # Шаг 20: Остановка сервиса Kafka для обеспечения чистого завершения
       - name: Stop Kafka

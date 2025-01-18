@@ -4,7 +4,6 @@ import os
 import time
 import json
 import asyncio
-import logging
 
 from telegram import Update
 from telegram.ext import (

@@ -1,48 +1,47 @@
-# File location: services/tg_ubot/app/kafka_consumer.py
+# services/tg_ubot/app/kafka_consumer.py
 
-import logging
-from kafka import KafkaConsumer
-from .config import settings
+import json
 import asyncio
+import logging
+from aiokafka import AIOKafkaConsumer
+from aiokafka.errors import KafkaError
+from .config import settings
+
+logger = logging.getLogger("kafka_consumer")
+
 
 class KafkaMessageConsumer:
-    def __init__(self):
+    def __init__(self, topics, group_id):
         self.logger = logging.getLogger("kafka_consumer")
+        self.topics = topics
+        self.group_id = group_id
         self.consumer = None
 
     async def initialize(self):
         try:
-            loop = asyncio.get_event_loop()
-            self.consumer = await loop.run_in_executor(None, lambda: KafkaConsumer(
-                settings.KAFKA_INSTRUCTION_TOPIC,
+            self.consumer = AIOKafkaConsumer(
+                *self.topics,
                 bootstrap_servers=settings.KAFKA_BOOTSTRAP_SERVERS,
-                group_id='userbot_group',
+                group_id=self.group_id,
                 auto_offset_reset='earliest',
                 enable_auto_commit=True,
-                api_version=(2, 5, 0)
-            ))
-            self.logger.info("KafkaConsumer создан и подключен к брокеру.")
+                value_deserializer=lambda m: m.decode('utf-8')
+            )
+            await self.consumer.start()
+            self.logger.info(f"AIOKafkaConsumer инициализирован, слушаем: {', '.join(self.topics)}")
         except Exception as e:
-            self.logger.error(f"Ошибка при создании KafkaConsumer: {e}")
+            self.logger.error(f"Ошибка при инициализации AIOKafkaConsumer: {e}")
             raise
 
     async def listen(self):
-        if self.consumer is None:
-            raise Exception("Kafka consumer не инициализирован.")
-        loop = asyncio.get_event_loop()
-        while True:
-            try:
-                message = await loop.run_in_executor(None, lambda: next(iter(self.consumer)))
-                yield message
-            except StopIteration:
-                self.logger.warning("Нет новых сообщений в Kafka.")
-                await asyncio.sleep(1)
-            except Exception as e:
-                self.logger.error(f"Ошибка при получении сообщения из Kafka: {e}")
-                raise
+        try:
+            async for msg in self.consumer:
+                yield msg.topic, json.loads(msg.value)
+        except Exception as e:
+            self.logger.error(f"Ошибка при получении сообщений из Kafka: {e}")
+            raise
 
     async def close(self):
         if self.consumer:
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(None, self.consumer.close)
-            self.logger.info("KafkaConsumer закрыт.")
+            await self.consumer.stop()
+            self.logger.info("AIOKafkaConsumer закрыт.")

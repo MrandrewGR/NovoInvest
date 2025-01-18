@@ -132,66 +132,27 @@ jobs:
             exit 0
           fi
 
-          # Отправляем весь проект, чтобы были docker-compose.yml и т.д.
-          rsync -avz --delete --exclude '.git' --exclude '.github' --exclude 'env/' . dev@${{ env.SSH_HOST }}:/home/dev/app/ --rsync-path="sudo rsync"
-
-      - name: Create env files on server
-        run: |
-          ssh dev@${{ env.SSH_HOST }} "
-            mkdir -p /home/dev/app/env &&
-            echo 'TELEGRAM_API_ID=${TELEGRAM_API_ID}' > /home/dev/app/env/.env &&
-            echo 'TELEGRAM_API_HASH=${TELEGRAM_API_HASH}' >> /home/dev/app/env/.env &&
-            echo 'TELEGRAM_PHONE=${TELEGRAM_PHONE}' >> /home/dev/app/env/.env &&
-            echo 'TELEGRAM_TARGET_IDS=${TELEGRAM_TARGET_IDS}' >> /home/dev/app/env/.env &&
-            echo 'TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}' >> /home/dev/app/env/.env &&
-            echo 'KAFKA_BOOTSTRAP_SERVERS=kafka:9092' >> /home/dev/app/env/.env &&
-            echo 'TELEGRAM_API_ID=${TELEGRAM_API_ID}' > /home/dev/app/env/tg_ubot.env &&
-            echo 'TELEGRAM_API_HASH=${TELEGRAM_API_HASH}' >> /home/dev/app/env/tg_ubot.env &&
-            echo 'TELEGRAM_PHONE=${TELEGRAM_PHONE}' >> /home/dev/app/env/tg_ubot.env &&
-            echo 'TELEGRAM_TARGET_IDS=${TELEGRAM_TARGET_IDS}' >> /home/dev/app/env/tg_ubot.env &&
-            echo 'KAFKA_BOOTSTRAP_SERVERS=kafka:9092' >> /home/dev/app/env/tg_ubot.env &&
-            echo 'TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}' > /home/dev/app/env/bot.env
-          "
-
-      - name: Verify main .env file
-        run: ssh dev@${{ env.SSH_HOST }} "grep TELEGRAM_TARGET_IDS /home/dev/app/env/.env && echo 'Check .env done'"
-
-      - name: Decode and upload Telethon session
-        run: |
-          echo "${{ env.SESSION_FILE_BASE64 }}" | base64 -d > session_name.session
-          rsync -avz session_name.session dev@${{ env.SSH_HOST }}:/home/dev/app/
-          rm session_name.session
-
-      # --- Опционально, чистое перезапускание Kafka (если действительно нужно) ---
-      - name: Stop Kafka if Config Changed
-        if: env.KAFKA_CONFIG_CHANGED == 'true'
-        run: |
-          ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app && docker compose stop kafka"
-
-      - name: Clean up Zookeeper node if Config Changed
-        if: env.KAFKA_CONFIG_CHANGED == 'true'
-        run: |
-          ssh dev@${{ env.SSH_HOST }} "docker exec zookeeper zkCli.sh -server localhost:2181 delete /brokers/ids/1 || echo 'Node /brokers/ids/1 does not exist'"
-
-      - name: Set correct permissions for Kafka data volume
-        run: |
-          ssh dev@${{ env.SSH_HOST }} "docker run --rm -v kafka_data:/data busybox chown -R 1000:1000 /data"
-
-      # ---------------------------------------------------------------------------
-
-      - name: Docker Compose Up
-        run: |
-          ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app &&
-            docker compose config -q &&
-            docker compose up -d --build --force-recreate"
-
+          # Если полный деплой или изменён docker-compose.yml — копируем весь проект и поднимаем всё
+          if [ "${{ env.FULL_DEPLOY }}" == "true" ] || [ "${{ env.DOCKER_COMPOSE_CHANGED }}" == "true" ]; then
+            rsync -avz --exclude '.git' --exclude '.github' . dev@${{ secrets.SSH_HOST }}:/home/dev/app/
+            ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose up -d --build --force-recreate"
+          else
+            # Иначе копируем только изменённые сервисы
+            for service in $SERVICES; do
+              echo "Deploying service: $service"
+              rsync -avz --exclude '.git' --exclude '.github' services/$service/ dev@${{ secrets.SSH_HOST }}:/home/dev/app/services/$service/
+            done
+            ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose up -d --build --remove-orphans --force-recreate $SERVICES"
+          fi
+      # Шаг 20
       - name: Recreate PostgreSQL volume if DB changed
         run: |
           if echo "${{ env.CHANGED_SERVICES }}" | grep -q "db"; then
-            ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app && docker compose stop db && docker compose rm -f -v db"
-            ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app && docker compose up -d db"
+            echo "Изменения в сервисе db. Перезапускаем контейнер и пересоздаём volume."
+            ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose stop db && docker compose rm -f db"
+            ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose up -d db"
           else
-            echo "DB not changed, skip volume recreate."
+            echo "Сервис db не изменялся. Пропускаем пересоздание volume."
           fi
 
       - name: Check Docker Compose Status

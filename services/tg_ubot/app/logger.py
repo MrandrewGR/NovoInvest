@@ -8,7 +8,7 @@ from .config import settings
 def setup_logging():
     # Настройка корневого логгера с StreamHandler
     logging.basicConfig(
-        level=getattr(logging, settings.LOG_LEVEL.upper(), logging.DEBUG),  # Установлен уровень DEBUG
+        level=getattr(logging, settings.LOG_LEVEL.upper(), logging.DEBUG),
         format='%(asctime)s %(levelname)s [%(name)s]: %(message)s',
         handlers=[
             logging.StreamHandler()

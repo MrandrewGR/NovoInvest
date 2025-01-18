@@ -1,3 +1,6 @@
 # File location: ./services/tg_file_bot/requirements.txt
 python-telegram-bot==20.3
+aiokafka==0.12.0
+tenacity==8.2.2
 kafka-python==2.0.2
+pandas==1.5.3

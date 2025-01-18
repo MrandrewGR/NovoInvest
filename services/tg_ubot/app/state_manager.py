@@ -7,6 +7,7 @@ import logging
 
 logger = logging.getLogger("state_manager")
 
+
 class StateManager:
     """
     Хранит:

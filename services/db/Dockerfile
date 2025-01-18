@@ -1,4 +1,5 @@
 # services/db/Dockerfile
+
 FROM python:3.10-slim
 
 WORKDIR /app
@@ -23,6 +24,7 @@ COPY entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 
 # Копирование wait-for-services.sh и установка прав
+COPY wait-for-services.sh /app/wait-for-services.sh
 RUN chmod +x /app/wait-for-services.sh
 
 # Установка точки входа

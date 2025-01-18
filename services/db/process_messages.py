@@ -267,18 +267,14 @@ def process_gap_scan_request(conn, message: dict, producer: KafkaProducer):
         exists = cur.fetchone()[0]
         if not exists:
             logger.warning(f"Таблица {table_name} не существует. Инициируем бэкфилл для чата {chat_id}.")
-            # Отправляем команду на бэкфилл
+            # Отправляем команду на бэкфилл через Kafka
             backfill_request = {
                 "type": "init_backfill",
                 "chat_id": chat_id,
-                "name_uname": name_uname
+                "name_uname": name_uname,
+                "correlation_id": correlation_id
             }
-            producer.send(KAFKA_GAP_SCAN_RESPONSE_TOPIC, value={
-                "type": "init_backfill",
-                "chat_id": chat_id,
-                "correlation_id": correlation_id,
-                "message": f"Таблица {table_name} не существует. Начинается бэкфилл."
-            })
+            producer.send(KAFKA_GAP_SCAN_RESPONSE_TOPIC, value=backfill_request)
             return
 
     earliest_db = get_earliest_in_db(conn, chat_id, table_name)

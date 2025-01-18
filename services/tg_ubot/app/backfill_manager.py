@@ -92,6 +92,7 @@ class BackfillManager:
             )
             if not messages:
                 logger.info(f"[Backfill] В чате {chat_id} нет более старых сообщений.")
+                self.state_mgr.update_backfill_from_id(chat_id, 1)
                 return
 
             sorted_msgs = sorted(messages, key=lambda m: m.id, reverse=True)
@@ -126,15 +127,3 @@ class BackfillManager:
             await asyncio.sleep(wait_sec)
         except Exception as e:
             logger.exception(f"[Backfill] Ошибка при бэкфилле чата {chat_id}: {e}")
-
-    async def _serialize_message(self, msg: Message, name_uname: str) -> dict:
-        return {
-            "event_type": "backfill_message",
-            "message_id": msg.id,
-            "chat_id": msg.chat_id,
-            "date": msg.date.isoformat() if msg.date else None,
-            "text_plain": msg.message or "",
-            "month_part": msg.date.strftime('%Y-%m') if msg.date else None,
-            "sender_id": msg.sender_id,
-            "name_uname": name_uname  # Добавляем name_uname
-        }

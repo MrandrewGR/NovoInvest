@@ -27,7 +27,7 @@ class TGInstructionsConsumer:
     async def listen(self):
         while True:
             try:
-                # Читаем из consumer (синхронно)
+                # Читаем из consumer
                 message = await asyncio.get_running_loop().run_in_executor(
                     None, lambda: next(iter(self.consumer))
                 )

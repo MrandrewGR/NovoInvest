@@ -9,7 +9,6 @@ from .config import settings
 
 logger = logging.getLogger("kafka_consumer")
 
-
 class KafkaMessageConsumer:
     def __init__(self, topics, group_id):
         self.logger = logging.getLogger("kafka_consumer")
@@ -36,7 +35,11 @@ class KafkaMessageConsumer:
     async def listen(self):
         try:
             async for msg in self.consumer:
-                yield msg.topic, json.loads(msg.value)
+                try:
+                    data = json.loads(msg.value)
+                    yield msg.topic, data
+                except json.JSONDecodeError:
+                    self.logger.error(f"Некорректный JSON в сообщении: {msg.value}")
         except Exception as e:
             self.logger.error(f"Ошибка при получении сообщений из Kafka: {e}")
             raise

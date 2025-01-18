@@ -80,10 +80,10 @@ class StateManager:
                         cid = int(chat_id_str)
                         result.append(cid)
                     except ValueError:
-                        pass
+                        logger.warning(f"[StateManager] Некорректный chat_id в ключе: {k}")
         return result
 
-    # Учёт новых сообщений (для b
+    # Учёт новых сообщений
     def record_new_message(self):
         """
         Приход нового/редактированного сообщения.

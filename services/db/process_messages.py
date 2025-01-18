@@ -1,3 +1,5 @@
+# services/db/instructions_consumer.py
+
 import os
 import json
 import logging
@@ -66,7 +68,7 @@ def get_table_name(name_uname, target_id):
             sanitized = f"messages_neg{abs(target_id)}"
         else:
             sanitized = f"messages_{target_id}"
-    return sanitized
+    return sanitized.lower()  # Добавляем .lower() для консистентности
 
 
 def create_connection():
@@ -157,14 +159,14 @@ def process_single_message(conn, raw_json):
     data = json.loads(raw_json)
     target_id = data.get("target_id")
     month_part = data.get("month_part")
-    name_uname = data.get("name_uname")
+    name_uname = data.get("name_uname", "Unknown")  # Получаем name_uname из сообщения
 
     # Если не хватает ключей - пропускаем
     if (name_uname is None and target_id is None) or month_part is None:
         logger.warning(f"Пропускаем сообщение без target_id или month_part: {data}")
         return
 
-    table_name = get_table_name(name_uname, target_id)
+    table_name = get_table_name(name_uname, target_id)  # Используем name_uname для построения имени таблицы
     ensure_table_exists(conn, table_name)
     ensure_partition_exists(conn, table_name, month_part)
     insert_message(conn, table_name, month_part, data)
@@ -174,15 +176,13 @@ def process_single_message(conn, raw_json):
 # Новый код для "gap_scan_request"
 ###########################################
 
-def get_earliest_in_db(conn, chat_id: int):
+def get_earliest_in_db(conn, chat_id: int, table_name: str):
     """
     Возвращаем MIN(message_id) для таблицы данного чата, или None.
-    Используем get_table_name(...), т.к. chat_id может быть отрицательным.
     """
     try:
-        base_table = get_table_name("", chat_id)
         with conn.cursor() as cur:
-            sql = f"SELECT MIN((data->>'message_id')::bigint) FROM {base_table}"
+            sql = f"SELECT MIN((data->>'message_id')::bigint) FROM {table_name}"
             cur.execute(sql)
             row = cur.fetchone()
             return row[0] if row and row[0] else None
@@ -192,19 +192,17 @@ def get_earliest_in_db(conn, chat_id: int):
         return None
 
 
-def get_partitions_for_chat(conn, chat_id: int):
+def get_partitions_for_chat(conn, chat_id: int, table_name: str):
     """
     Возвращаем список названий партиций (child tables).
-    Аналогично: нужно корректно построить имя родительской таблицы.
     """
     try:
-        base_table = get_table_name("", chat_id)
         with conn.cursor() as cur:
             # Увы, нельзя просто передать %s::regclass, придётся делать f-строку:
             sql = f"""
                 SELECT inhrelid::regclass::text
                 FROM pg_inherits
-                WHERE inhparent = '{base_table}'::regclass
+                WHERE inhparent = '{table_name}'::regclass
             """
             cur.execute(sql)
             rows = cur.fetchall()
@@ -250,16 +248,19 @@ def find_missing_ids_in_partition(conn, partition_name: str):
 
 def process_gap_scan_request(conn, message: dict, producer: KafkaProducer):
     """
-    Получаем chat_id, ищем earliest_in_db, собираем "дыры" и шлём ответ.
+    Получаем chat_id и name_uname, ищем earliest_in_db, собираем "дыры" и шлём ответ.
     """
     chat_id = message.get("chat_id")
     correlation_id = message.get("correlation_id", "unknown")
+    name_uname = message.get("name_uname", "Unknown")  # Получаем name_uname из сообщения
     if not chat_id:
         logger.warning("gap_scan_request без chat_id, пропускаем")
         return
 
-    earliest_db = get_earliest_in_db(conn, chat_id)
-    partitions = get_partitions_for_chat(conn, chat_id)
+    table_name = get_table_name(name_uname, chat_id)  # Используем name_uname для построения имени таблицы
+
+    earliest_db = get_earliest_in_db(conn, chat_id, table_name)
+    partitions = get_partitions_for_chat(conn, chat_id, table_name)
     all_missing = []
     for p in partitions:
         miss = find_missing_ids_in_partition(conn, p)
@@ -359,7 +360,3 @@ def run_consumer():
         logger.info("DB соединение закрыто.")
         producer.close()
         logger.info("KafkaProducer закрыт.")
-
-
-if __name__ == "__main__":
-    run_consumer()

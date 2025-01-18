@@ -6,6 +6,7 @@ from telethon import errors
 from telethon.tl.patched import Message
 from .utils import human_like_delay, get_delay_settings
 from .state_manager import StateManager
+from .process_messages import get_table_name  # Импортируем функцию для формирования названий таблиц
 
 logger = logging.getLogger("backfill_manager")
 
@@ -21,6 +22,7 @@ class BackfillManager:
         client,
         state_mgr: StateManager,
         message_callback,
+        chat_id_to_data,  # Добавляем chat_id_to_data
         new_msgs_threshold: int = 5,
         idle_timeout: int = 10,
         batch_size: int = 50,
@@ -30,6 +32,7 @@ class BackfillManager:
         self.client = client
         self.state_mgr = state_mgr
         self.message_callback = message_callback
+        self.chat_id_to_data = chat_id_to_data  # Сохраняем chat_id_to_data
 
         self.new_msgs_threshold = new_msgs_threshold
         self.idle_timeout = idle_timeout
@@ -73,6 +76,10 @@ class BackfillManager:
             logger.debug(f"[Backfill] Чат {chat_id} уже полностью выгружен.")
             return
 
+        # Получаем name_uname для формирования названия таблицы
+        name_uname = self.chat_id_to_data.get(chat_id, {}).get("name_or_username", "Unknown")
+        table_name = get_table_name(name_uname, chat_id)  # Используем name_uname
+
         logger.info(
             f"[Backfill] Загружаем до {self.batch_size} старых сообщений для чата {chat_id}, offset_id={backfill_from_id}"
         )
@@ -99,7 +106,7 @@ class BackfillManager:
                 dmin, dmax = get_delay_settings("chat")
                 await human_like_delay(dmin, dmax)
 
-                data = await self._serialize_message(msg)
+                data = await self._serialize_message(msg, name_uname)  # Передаём name_uname
                 await self.message_callback(data)
 
                 if msg.id < backfill_from_id:
@@ -120,7 +127,7 @@ class BackfillManager:
         except Exception as e:
             logger.exception(f"[Backfill] Ошибка при бэкфилле чата {chat_id}: {e}")
 
-    async def _serialize_message(self, msg: Message) -> dict:
+    async def _serialize_message(self, msg: Message, name_uname: str) -> dict:
         return {
             "event_type": "backfill_message",
             "message_id": msg.id,
@@ -129,4 +136,5 @@ class BackfillManager:
             "text_plain": msg.message or "",
             "month_part": msg.date.strftime('%Y-%m') if msg.date else None,
             "sender_id": msg.sender_id,
+            "name_uname": name_uname  # Добавляем name_uname
         }

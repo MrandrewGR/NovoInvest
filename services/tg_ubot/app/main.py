@@ -19,6 +19,7 @@ from .gaps_manager import GapsManager
 MAX_BUFFER_SIZE = 10000
 RECONNECT_INTERVAL = 10
 
+
 async def run_userbot():
     ensure_dir(settings.MEDIA_DIR)
     ensure_dir(os.path.dirname(settings.LOG_FILE))
@@ -65,17 +66,6 @@ async def run_userbot():
         topic = settings.KAFKA_UBOT_OUTPUT_TOPIC
         await message_buffer.put((topic, data))
 
-    backfill_manager = BackfillManager(
-        client=client,
-        state_mgr=state_mgr,
-        message_callback=send_message_to_kafka,
-        new_msgs_threshold=5,
-        idle_timeout=10,
-        batch_size=50,
-        flood_wait_delay=60,
-        max_total_wait=300
-    )
-
     # Инициализируем KafkaProducer
     await kafka_producer.initialize()
     logger.info("[main] Kafka Producer инициализирован.")
@@ -117,8 +107,22 @@ async def run_userbot():
         kafka_consumer=kafka_consumer,  # чтобы зарегистрировать handle_gap_scan_response
         state_mgr=state_mgr,
         client=client,
+        chat_id_to_data=chat_id_to_data,  # Передаём chat_id_to_data
         gap_scan_request_topic="gap_scan_request",
         gap_scan_response_topic=gap_scan_response_topic
+    )
+
+    # Создаём BackfillManager
+    backfill_manager = BackfillManager(
+        client=client,
+        state_mgr=state_mgr,
+        message_callback=send_message_to_kafka,
+        chat_id_to_data=chat_id_to_data,  # Передаём chat_id_to_data
+        new_msgs_threshold=5,
+        idle_timeout=10,
+        batch_size=50,
+        flood_wait_delay=60,
+        max_total_wait=300
     )
 
     # Слушатель gap_scan_response
@@ -140,8 +144,11 @@ async def run_userbot():
                 await gaps_manager.find_and_fill_gaps_for_chat(c_id)
             await asyncio.sleep(1800)  # каждые 30 минут
 
-    producer_coro = asyncio.create_task(producer_task())
+    # Запускаем BackfillManager
     backfill_coro = asyncio.create_task(backfill_manager.run())
+
+    # Запускаем остальные задачи
+    producer_coro = asyncio.create_task(producer_task())
     gap_listener_coro = asyncio.create_task(gap_scan_response_listener())
     gap_filler_coro = asyncio.create_task(gap_filler_task())
 

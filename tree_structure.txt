@@ -1,5 +1,4 @@
 /Users/andreigrishin/Documents/GitHub/NovoInvest
-├── NovoInvest.mdj
 ├── docker-compose.yml
 ├── env
 ├── requirements
@@ -17,31 +16,38 @@
 │   ├── db
 │   │   ├── Dockerfile
 │   │   ├── __init__.py
+│   │   ├── entrypoint.sh
 │   │   ├── init-db
 │   │   │   └── init.sql
+│   │   ├── instructions_consumer.py
 │   │   ├── main.py
 │   │   ├── process_messages.py
 │   │   ├── requirements.txt
+│   │   ├── supervisord.conf
 │   │   └── wait-for-services.sh
 │   ├── tg_ubot
 │   │   ├── Dockerfile
 │   │   ├── app
 │   │   │   ├── README.md
 │   │   │   ├── __init__.py
+│   │   │   ├── backfill_manager.py
 │   │   │   ├── chat_info.py
 │   │   │   ├── config.py
+│   │   │   ├── gaps_manager.py
 │   │   │   ├── handlers
 │   │   │   │   ├── __init__.py
 │   │   │   │   └── unified_handler.py
 │   │   │   ├── kafka_consumer.py
+│   │   │   ├── kafka_instructions_consumer.py
 │   │   │   ├── kafka_producer.py
 │   │   │   ├── logger.py
 │   │   │   ├── main.py
+│   │   │   ├── process_messages.py
 │   │   │   ├── send_test_message.py
 │   │   │   ├── state.py
+│   │   │   ├── state_manager.py
 │   │   │   ├── test_entity.py
 │   │   │   └── utils.py
-│   │   ├── media
 │   │   ├── requirements.txt
 │   │   └── wait-for-it.sh
 │   └── xml_worker
@@ -57,7 +63,4 @@
 └── utils
     ├── get structure.py
     ├── get_chat_id.py
-    ├── get_session.py
-    ├── session_b64.txt
-    ├── session_name.session
-    └── session_name.session.b64
+    └── get_session.py

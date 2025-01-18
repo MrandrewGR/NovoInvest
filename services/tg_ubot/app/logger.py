@@ -6,7 +6,10 @@ from app.utils import ensure_dir
 from .config import settings
 
 def setup_logging():
-    # Настройка корневого логгера с StreamHandler
+    """
+    Configure logging for the userbot application.
+    """
+    # Basic root logger with StreamHandler
     logging.basicConfig(
         level=getattr(logging, settings.LOG_LEVEL.upper(), logging.DEBUG),
         format='%(asctime)s %(levelname)s [%(name)s]: %(message)s',
@@ -15,7 +18,6 @@ def setup_logging():
         ]
     )
 
-    # Список логгеров, которым необходимо добавить дополнительные обработчики
     module_loggers = [
         "unified_handler",
         "kafka_producer",
@@ -23,29 +25,30 @@ def setup_logging():
         "utils",
         "userbot",
         "state",
-        "chat_info"  # Добавлено для логирования chat_info
+        "chat_info",
+        "backfill_manager",
+        "gaps_manager",
+        "kafka_instructions_consumer",
+        "process_messages"
     ]
 
     for logger_name in module_loggers:
         try:
             logger = logging.getLogger(logger_name)
             logger.setLevel(getattr(logging, settings.LOG_LEVEL.upper(), logging.DEBUG))
-            # Удаляем все обработчики, чтобы избежать дублирования
+            # Clear existing handlers (avoid duplicates)
             logger.handlers = []
-            # Добавляем StreamHandler
+            # Add our stream handler
             stream_handler = logging.StreamHandler()
             formatter = logging.Formatter('%(asctime)s %(levelname)s [%(name)s]: %(message)s')
             stream_handler.setFormatter(formatter)
             logger.addHandler(stream_handler)
-            logger.propagate = False  # Отключаем пропагацию
+            logger.propagate = False
         except Exception as e:
-            print(f"Ошибка при настройке логгера {logger_name}: {e}")
+            print(f"Error configuring logger {logger_name}: {e}")
 
-    # Основной логгер для пользовательского приложения (userbot)
     userbot_logger = logging.getLogger("userbot")
-    userbot_logger.propagate = False  # Отключена пропагация
+    userbot_logger.propagate = False
 
-    # Тестовое сообщение
-    logging.getLogger("userbot").info("Логирование настроено корректно.")
-
+    logging.getLogger("userbot").info("Logging configured correctly.")
     return logging.getLogger("userbot")

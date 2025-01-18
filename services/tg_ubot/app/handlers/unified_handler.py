@@ -4,9 +4,10 @@ import logging
 import asyncio
 from telethon import TelegramClient, events
 from telethon.tl.types import Message
+
 from app.config import settings
 from app.process_messages import serialize_message
-from app.utils import human_like_delay, ensure_dir
+from app.utils import human_like_delay, get_delay_settings
 import json
 
 logger = logging.getLogger("unified_handler")
@@ -76,10 +77,9 @@ async def process_message_event(event, event_type, message_buffer, counter, chat
     """
     Processes a single incoming or edited message:
       1. Human-like delay (day/night consideration)
-      2. Media downloading (if any)
-      3. Collect reactions, forward data, reply information, etc.
-      4. Serialize the message into JSON
-      5. Send to Kafka via message_buffer
+      2. Collect data, including possible media, reactions, etc.
+      3. Serialize the message into JSON
+      4. Send to Kafka via message_buffer
 
     Parameters:
     - event: Telethon event
@@ -107,7 +107,7 @@ async def process_message_event(event, event_type, message_buffer, counter, chat
         # Increment processed messages counter
         await counter.increment()
 
-        # Serialize the message using the centralized function
+        # Serialize the message
         message_data = serialize_message(msg, event_type=event_type, chat_info=chat_info)
 
         # Log the serialized message

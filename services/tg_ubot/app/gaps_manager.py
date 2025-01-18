@@ -5,7 +5,7 @@ import logging
 import json
 import uuid
 from .state_manager import StateManager
-from .process_messages import get_table_name  # Import the function for table naming
+from .process_messages import get_table_name
 
 logger = logging.getLogger("gaps_manager")
 
@@ -18,21 +18,21 @@ class GapsManager:
 
     def __init__(self,
                  kafka_producer,        # Instance of KafkaMessageProducer
-                 kafka_consumer,        # Instance of KafkaMessageConsumer (subscribed to gap_scan_response)
+                 kafka_consumer,        # Instance of KafkaMessageConsumer
                  state_mgr: StateManager,
                  client,                # TelegramClient - to get earliest_in_telegram
-                 chat_id_to_data,       # Added chat_id_to_data
+                 chat_id_to_data,
                  gap_scan_request_topic="gap_scan_request",
                  gap_scan_response_topic="gap_scan_response"):
         self.kafka_producer = kafka_producer
         self.kafka_consumer = kafka_consumer
         self.state_mgr = state_mgr
         self.client = client
-        self.chat_id_to_data = chat_id_to_data  # Store chat_id_to_data
+        self.chat_id_to_data = chat_id_to_data
         self.gap_scan_request_topic = gap_scan_request_topic
         self.gap_scan_response_topic = gap_scan_response_topic
 
-        # Dictionary of "pending" responses: {correlation_id: {"chat_id":..., "future": future}}
+        # Dictionary of "pending" responses: {correlation_id: {"chat_id":..., "future": ...}}
         self.pending_tasks = {}
 
     async def find_and_fill_gaps_for_chat(self, chat_id: int):
@@ -43,16 +43,16 @@ class GapsManager:
         4) Sets backfill_from_id
         """
         correlation_id = str(uuid.uuid4())
-        name_uname = self.chat_id_to_data.get(chat_id, {}).get("name_uname", "Unknown")  # Corrected field name
-        table_name = get_table_name(name_uname, chat_id)  # Use name_uname
+        chat_info = self.chat_id_to_data.get(chat_id, {})
+        name_uname = chat_info.get("name_uname", "Unknown")
+        table_name = get_table_name(name_uname, chat_id)
 
         req = {
             "type": "gap_scan_request",
             "chat_id": chat_id,
             "correlation_id": correlation_id,
-            "name_uname": name_uname  # Ensure name_uname is included in the request
+            "name_uname": name_uname
         }
-        # Send the request
         await self.kafka_producer.send_message(self.gap_scan_request_topic, req)
         logger.info(f"[GapsManager] Sent gap_scan_request for chat_id={chat_id}, correlation_id={correlation_id}")
 
@@ -61,7 +61,7 @@ class GapsManager:
         fut = loop.create_future()
         self.pending_tasks[correlation_id] = {"chat_id": chat_id, "future": fut}
 
-        # Wait for the response or timeout (e.g., 30 seconds)
+        # Wait for the response or timeout
         try:
             response = await asyncio.wait_for(fut, timeout=30.0)
         except asyncio.TimeoutError:
@@ -69,7 +69,6 @@ class GapsManager:
             del self.pending_tasks[correlation_id]
             return
 
-        # Process different types of responses
         response_type = response.get("type")
         if response_type == "gap_scan_response":
             earliest_in_db = response.get("earliest_in_db")
@@ -77,30 +76,29 @@ class GapsManager:
 
             logger.info(f"[GapsManager] chat_id={chat_id} earliest_in_db={earliest_in_db}, missing={missing_ranges}")
 
-            # Get earliest_in_telegram
             earliest_in_tg = await self._get_earliest_in_telegram(chat_id)
 
+            # If earliest_in_db is significantly ahead, skip those older IDs
             if earliest_in_db and earliest_in_tg and earliest_in_db > (earliest_in_tg + 1):
                 self.state_mgr.update_backfill_from_id(chat_id, earliest_in_db)
-                logger.info(f"[GapsManager] Set backfill_from_id={earliest_in_db} (skipping from {earliest_in_tg}..{earliest_in_db-1})")
+                logger.info(f"[GapsManager] Set backfill_from_id={earliest_in_db} (skipping older than that)")
 
-            # Handle missing_ranges
+            # Handle missing ranges
             for (start, end) in missing_ranges:
                 bf_from = end + 1
                 self.state_mgr.update_backfill_from_id(chat_id, bf_from)
                 logger.info(f"[GapsManager] Skipping {start}..{end}, setting backfill_from_id={bf_from} for chat={chat_id}")
 
         elif response_type == "init_backfill":
-            # Initiate backfill for the given chat
             logger.info(f"[GapsManager] Initiating backfill for chat_id={chat_id}")
-            self.state_mgr.update_backfill_from_id(chat_id, None)  # Set the necessary initial value
-            # Assuming BackfillManager will periodically check and start backfill
+            self.state_mgr.update_backfill_from_id(chat_id, None)
+
         else:
             logger.warning(f"[GapsManager] Unknown response type: {response_type}")
 
     async def _get_earliest_in_telegram(self, chat_id: int):
         """
-        Retrieves the earliest message (Telethon): limit=1, reverse=True, offset_id=0
+        Retrieves the earliest message in Telegram by requesting 1 message from the start.
         """
         try:
             msgs = await self.client.get_messages(chat_id, limit=1, offset_id=0, reverse=True)

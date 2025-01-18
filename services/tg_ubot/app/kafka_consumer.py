@@ -27,9 +27,9 @@ class KafkaMessageConsumer:
                 value_deserializer=lambda m: m.decode('utf-8')
             )
             await self.consumer.start()
-            self.logger.info(f"AIOKafkaConsumer инициализирован, слушаем: {', '.join(self.topics)}")
+            self.logger.info(f"AIOKafkaConsumer initialized, listening on: {', '.join(self.topics)}")
         except Exception as e:
-            self.logger.error(f"Ошибка при инициализации AIOKafkaConsumer: {e}")
+            self.logger.error(f"Error initializing AIOKafkaConsumer: {e}")
             raise
 
     async def listen(self):
@@ -39,12 +39,12 @@ class KafkaMessageConsumer:
                     data = json.loads(msg.value)
                     yield msg.topic, data
                 except json.JSONDecodeError:
-                    self.logger.error(f"Некорректный JSON в сообщении: {msg.value}")
+                    self.logger.error(f"Invalid JSON in message: {msg.value}")
         except Exception as e:
-            self.logger.error(f"Ошибка при получении сообщений из Kafka: {e}")
+            self.logger.error(f"Error receiving messages from Kafka: {e}")
             raise
 
     async def close(self):
         if self.consumer:
             await self.consumer.stop()
-            self.logger.info("AIOKafkaConsumer закрыт.")
+            self.logger.info("AIOKafkaConsumer closed.")

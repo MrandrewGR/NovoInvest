@@ -3,6 +3,7 @@
 import asyncio
 import logging
 from telethon import errors
+
 from .utils import human_like_delay, get_delay_settings
 from .state_manager import StateManager
 from .process_messages import get_table_name, serialize_message
@@ -14,6 +15,13 @@ class BackfillManager:
     """
     Responsible for backfilling older messages during idle periods
     to avoid interfering with the processing of new messages.
+
+    The logic:
+    - Every `idle_timeout` seconds, check how many new messages came in
+      (via state_mgr.pop_new_messages_count).
+    - If new messages exceed `new_msgs_threshold`, we skip backfill
+      to prioritize new messages.
+    - If below threshold, we proceed to backfill in batches.
     """
 
     def __init__(
@@ -21,7 +29,7 @@ class BackfillManager:
         client,
         state_mgr: StateManager,
         message_callback,
-        chat_id_to_data,  # Added chat_id_to_data
+        chat_id_to_data,
         new_msgs_threshold: int = 5,
         idle_timeout: int = 10,
         batch_size: int = 50,
@@ -31,7 +39,7 @@ class BackfillManager:
         self.client = client
         self.state_mgr = state_mgr
         self.message_callback = message_callback
-        self.chat_id_to_data = chat_id_to_data  # Store chat_id_to_data
+        self.chat_id_to_data = chat_id_to_data
 
         self.new_msgs_threshold = new_msgs_threshold
         self.idle_timeout = idle_timeout
@@ -48,11 +56,13 @@ class BackfillManager:
     async def run(self):
         logger.info("BackfillManager started.")
         while not self._stop_event.is_set():
+            # Wait for the idle period
             await asyncio.sleep(self.idle_timeout)
 
             new_count = self.state_mgr.pop_new_messages_count(interval=self.idle_timeout)
             logger.debug(f"[Backfill] {new_count} new messages received in the last {self.idle_timeout} seconds.")
 
+            # If we exceeded threshold, skip backfill for this cycle
             if new_count > self.new_msgs_threshold:
                 logger.debug("[Backfill] High volume of new messages, delaying backfill.")
                 continue
@@ -72,13 +82,13 @@ class BackfillManager:
     async def _do_chat_backfill(self, chat_id: int):
         backfill_from_id = self.state_mgr.get_backfill_from_id(chat_id)
         if backfill_from_id is None or backfill_from_id <= 1:
-            logger.debug(f"[Backfill] Chat {chat_id} is fully backfilled.")
+            logger.debug(f"[Backfill] Chat {chat_id} is fully backfilled (or no older msgs).")
             return
 
         # Get name_uname for table naming
         chat_info = self.chat_id_to_data.get(chat_id, {})
         name_uname = chat_info.get("name_uname", "Unknown")
-        table_name = get_table_name(name_uname, chat_id)  # Use name_uname
+        table_name = get_table_name(name_uname, chat_id)
 
         logger.info(
             f"[Backfill] Loading up to {self.batch_size} older messages for chat {chat_id}, offset_id={backfill_from_id}"
@@ -101,16 +111,14 @@ class BackfillManager:
                 if self._stop_event.is_set():
                     break
 
+                # Only process messages with ID < backfill_from_id
                 if msg.id >= backfill_from_id:
                     continue
 
                 dmin, dmax = get_delay_settings("chat")
                 await human_like_delay(dmin, dmax)
 
-                # Serialize the message using the centralized function
                 message_data = serialize_message(msg, event_type="backfill_message", chat_info=chat_info)
-
-                # Send to Kafka via the callback
                 await self.message_callback(message_data)
 
                 if msg.id < backfill_from_id:

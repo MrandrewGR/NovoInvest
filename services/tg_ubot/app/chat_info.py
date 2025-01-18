@@ -25,8 +25,8 @@ async def get_all_chats_info(client: TelegramClient):
     }
 
     Features:
-    - For channels and supergroups, target_id = -100XXXXXXXXXX (concatenation of -100 + entity.id)
-    - For regular groups and users, target_id = entity.id (positive or slightly negative)
+    - For channels and supergroups, target_id = -100XXXXXXXXXX
+    - For regular groups and users, target_id = entity.id
     - Excludes SavedMessages (777000), BotFather, Telegram, if specified in EXCLUDED_CHAT_IDS / EXCLUDED_USERNAMES.
     """
     chats_info = {}
@@ -40,12 +40,10 @@ async def get_all_chats_info(client: TelegramClient):
         if not entity:
             continue
 
-        # Raw (normal) entity.id (integer)
         raw_id = getattr(entity, 'id', None)
         if raw_id is None:
             continue
 
-        # Check username for exclusions
         raw_uname = getattr(entity, 'username', '') or ''
         if raw_uname.lower() in excluded_unames:
             logger.info(f"Excluding by username={raw_uname}, id={raw_id}")
@@ -55,13 +53,11 @@ async def get_all_chats_info(client: TelegramClient):
             logger.info(f"Excluding by chat_id={raw_id} (from EXCLUDED_CHAT_IDS)")
             continue
 
-        # Determine the correct target_id and type
         target_id, entity_type = get_target_id_and_type(entity)
         if target_id is None:
             logger.debug(f"Could not determine target_id for raw_id={raw_id}, entity_type={entity_type}. Skipping.")
             continue
 
-        # Get human-readable fields
         chat_title = get_chat_title(entity)
         chat_username = getattr(entity, 'username', '') or ''
         name_uname = get_name_or_username(entity)
@@ -70,7 +66,7 @@ async def get_all_chats_info(client: TelegramClient):
             "target_id": target_id,
             "chat_title": chat_title,
             "chat_username": chat_username,
-            "name_uname": name_uname,  # Standardized field name
+            "name_uname": name_uname,
             "entity_type": entity_type
         }
         logger.debug(f"Saved in chats_info[{target_id}]: {chats_info[target_id]}")
@@ -82,26 +78,22 @@ async def get_all_chats_info(client: TelegramClient):
 def get_target_id_and_type(entity):
     """
     Returns (target_id, entity_type) with Telegram's format for channels/supergroups:
-      - If Channel (broadcast || megagroup) => -100XXXXXXXXXX (string concat),
+      - If Channel => -100XXXXXXXXXX
       - Otherwise, return entity.id as is.
     """
     if isinstance(entity, Channel):
         # Channel (broadcast) or supergroup (megagroup)
         if getattr(entity, 'broadcast', False) or getattr(entity, 'megagroup', False):
-            # Example: entity.id = 1385413506 => target_id = -1001385413506
             str_id = f"-100{entity.id}"
             return int(str_id), "ChannelOrSupergroup"
         else:
-            # Unknown channel type
             str_id = f"-100{entity.id}"
             return int(str_id), "UnknownChannelType"
 
     elif isinstance(entity, Chat):
-        # Regular group
         return entity.id, "Chat"
 
     elif isinstance(entity, User):
-        # User
         return entity.id, "User"
 
     elif isinstance(entity, ChatForbidden):

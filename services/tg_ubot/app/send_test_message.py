@@ -12,7 +12,7 @@ def safe_json_serializer(message):
     try:
         return json.dumps(message).encode('utf-8')
     except (TypeError, ValueError) as e:
-        logger.error(f"Ошибка сериализации сообщения: {e}")
+        logger.error(f"Error serializing test message: {e}")
         return None
 
 async def send_test_message():
@@ -32,9 +32,9 @@ async def send_test_message():
     future = producer.send('telegram_channel_messages', value=message)
     try:
         record_metadata = future.get(timeout=10)
-        logger.info(f"Сообщение отправлено в {record_metadata.topic} партицию {record_metadata.partition} со смещением {record_metadata.offset}")
+        logger.info(f"Test message sent to {record_metadata.topic}, partition {record_metadata.partition}, offset {record_metadata.offset}")
     except Exception as e:
-        logger.error(f"Не удалось отправить сообщение: {e}")
+        logger.error(f"Failed to send test message: {e}")
     finally:
         producer.close()
 

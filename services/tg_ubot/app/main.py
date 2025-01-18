@@ -4,6 +4,7 @@ import asyncio
 import os
 import signal
 from telethon import TelegramClient
+
 from .config import settings
 from .logger import setup_logging
 from .kafka_producer import KafkaMessageProducer
@@ -15,6 +16,7 @@ from .handlers.unified_handler import register_unified_handler
 from .utils import ensure_dir
 from .state import MessageCounter
 from .gaps_manager import GapsManager
+
 
 MAX_BUFFER_SIZE = 10000
 RECONNECT_INTERVAL = 10
@@ -63,6 +65,7 @@ async def run_userbot():
                 await asyncio.sleep(RECONNECT_INTERVAL)
 
     async def send_message_to_kafka(data: dict):
+        """Callback used by the BackfillManager to produce messages."""
         topic = settings.KAFKA_UBOT_OUTPUT_TOPIC
         await message_buffer.put((topic, data))
 
@@ -76,11 +79,14 @@ async def run_userbot():
         logger.error("[main] Telegram client not authorized! Exiting.")
         shutdown_event.set()
 
+    # Pre-warm get_dialogs
     await client.get_dialogs()
+
+    # Get chat metadata
     chat_id_to_data = await get_all_chats_info(client)
     logger.info(f"[main] Collected {len(chat_id_to_data)} chats/channels.")
 
-    # Register unified_handler
+    # Register unified handler for new/edit messages
     register_unified_handler(
         client=client,
         message_buffer=message_buffer,
@@ -90,9 +96,7 @@ async def run_userbot():
         state_mgr=state_mgr
     )
 
-    # ---------------------------
-    # Add Kafka consumer listening to gap_scan_response
-    # ---------------------------
+    # Create and initialize Kafka consumer for gap_scan_response
     gap_scan_response_topic = os.environ.get("KAFKA_GAP_SCAN_RESPONSE_TOPIC", "gap_scan_response")
     kafka_consumer = KafkaMessageConsumer(
         topics=[gap_scan_response_topic],
@@ -104,10 +108,10 @@ async def run_userbot():
     # Create GapsManager
     gaps_manager = GapsManager(
         kafka_producer=kafka_producer,
-        kafka_consumer=kafka_consumer,  # to register handle_gap_scan_response
+        kafka_consumer=kafka_consumer,
         state_mgr=state_mgr,
         client=client,
-        chat_id_to_data=chat_id_to_data,  # Pass chat_id_to_data
+        chat_id_to_data=chat_id_to_data,
         gap_scan_request_topic="gap_scan_request",
         gap_scan_response_topic=gap_scan_response_topic
     )
@@ -117,7 +121,7 @@ async def run_userbot():
         client=client,
         state_mgr=state_mgr,
         message_callback=send_message_to_kafka,
-        chat_id_to_data=chat_id_to_data,  # Pass chat_id_to_data
+        chat_id_to_data=chat_id_to_data,
         new_msgs_threshold=5,
         idle_timeout=10,
         batch_size=50,
@@ -130,10 +134,9 @@ async def run_userbot():
         async for (topic, data) in kafka_consumer.listen():
             if topic == gap_scan_response_topic:
                 if data.get("type") == "gap_scan_response":
-                    # Call gaps_manager.handle_gap_scan_response
+                    # Pass to GapsManager
                     await gaps_manager.handle_gap_scan_response(data)
                 elif data.get("type") == "init_backfill":
-                    # Initiate backfill for the given chat
                     chat_id = data.get("chat_id")
                     if chat_id:
                         name_uname = chat_id_to_data.get(chat_id, {}).get("name_uname", "Unknown")
@@ -144,17 +147,16 @@ async def run_userbot():
             else:
                 logger.debug(f"[gap_scan_response_listener] Received from unknown topic: {topic}")
 
-    # Example coroutine that scans for gaps every half hour
+    # Example periodic gap filler
     async def gap_filler_task():
         while not shutdown_event.is_set():
+            # For every known chat, request gap scan
             for c_id in chat_id_to_data.keys():
                 await gaps_manager.find_and_fill_gaps_for_chat(c_id)
             await asyncio.sleep(1800)  # every 30 minutes
 
-    # Start BackfillManager
+    # Launch background tasks
     backfill_coro = asyncio.create_task(backfill_manager.run())
-
-    # Start other tasks
     producer_coro = asyncio.create_task(producer_task())
     gap_listener_coro = asyncio.create_task(gap_scan_response_listener())
     gap_filler_coro = asyncio.create_task(gap_filler_task())
@@ -179,6 +181,5 @@ async def run_userbot():
         logger.info("[main] tg_ubot service terminated.")
 
 
-# Entry point to run the async function
 if __name__ == "__main__":
     asyncio.run(run_userbot())

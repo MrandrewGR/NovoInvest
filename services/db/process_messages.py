@@ -1,5 +1,3 @@
-# File location: services/db/process_messages.py
-
 import os
 import json
 import logging
@@ -56,11 +54,12 @@ def sanitize_table_name(name_uname):
 
 def get_table_name(name_uname, target_id):
     """
-    Возвращаем «чистое» имя таблицы. Если name_uname задано, используем его
-    (через sanitize_table_name). Если нет — формируем вида messages_negXXXXX или messages_XXXX.
+    Возвращаем «чистое» имя таблицы с префиксом 'messages_'.
+    Если name_uname задано, используем его через sanitize_table_name.
+    Если нет — формируем вида messages_negXXXXX или messages_XXXX.
     """
     if name_uname and name_uname != "Unknown":
-        sanitized = sanitize_table_name(name_uname)
+        sanitized = f"messages_{sanitize_table_name(name_uname)}"
     else:
         # если нет name_uname, используем числовой идентификатор
         if target_id < 0:

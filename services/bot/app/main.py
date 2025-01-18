@@ -5,6 +5,7 @@ import asyncio
 
 from telegram import Update
 from telegram.ext import (
+    Application,
     ApplicationBuilder,
     CommandHandler,
     MessageHandler,
@@ -163,8 +164,16 @@ async def consume_results_from_kafka(application):
         logger.info("Kafka Consumer остановлен.")
 
 
-async def startup(application):
-    """Инициализация Producer и Consumer Kafka."""
+async def main():
+    """Главная точка входа."""
+    logger.info("Запуск Telegram-бота для приёма XML-файлов.")
+
+    application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+
+    application.add_handler(CommandHandler("start", start_command))
+    application.add_handler(MessageHandler(filters.Document.ALL, handle_file))
+
+    # Инициализация Kafka Producer
     producer = AIOKafkaProducer(
         bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
         value_serializer=lambda v: json.dumps(v).encode("utf-8"),
@@ -172,46 +181,15 @@ async def startup(application):
     await producer.start()
     application.bot_data["producer"] = producer
 
-    application.bot_data["consumer_task"] = asyncio.create_task(
-        consume_results_from_kafka(application)
-    )
-
-
-async def shutdown(application):
-    """Корректное завершение работы Producer и Consumer Kafka."""
-    producer = application.bot_data.get("producer")
-    if producer:
-        await producer.stop()
-
-    consumer_task = application.bot_data.get("consumer_task")
-    if consumer_task:
-        consumer_task.cancel()
-        try:
-            await consumer_task
-        except asyncio.CancelledError:
-            pass
-
-    logger.info("Бот полностью остановлен.")
-
-
-async def main():
-    """Главная точка входа."""
-    logger.info("Запуск Telegram-бота для приёма XML-файлов.")
-
-    application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
-    application.add_handler(CommandHandler("start", start_command))
-    application.add_handler(MessageHandler(filters.Document.ALL, handle_file))
-
-    await startup(application)
+    # Запуск Kafka Consumer
+    asyncio.create_task(consume_results_from_kafka(application))
 
     try:
         await application.run_polling()
     finally:
-        await shutdown(application)
+        await producer.stop()
+        logger.info("Бот завершил работу.")
 
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except (KeyboardInterrupt, SystemExit):
-        logger.info("Завершение работы бота.")
+    asyncio.run(main())

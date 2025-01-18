@@ -2,7 +2,7 @@
 set -e
 
 # Ожидание запуска зависимых сервисов
-/app/wait-for-services.sh postgres:5432 kafka:9092
+/app/wait-for-services.sh
 
 # Запуск supervisord
 exec supervisord -c /app/supervisord.conf

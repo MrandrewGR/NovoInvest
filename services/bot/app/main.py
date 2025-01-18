@@ -224,6 +224,39 @@ async def shutdown(application: ContextTypes.DEFAULT_TYPE):
     await application.shutdown()
     logger.info("Бот полностью остановлен.")
 
+async def main():
+    """Main entry point for the Telegram bot application."""
+    logger.info("Запуск Телеграм-бота для приёма XML-файлов...")
+
+    # Create the application instance
+    application = (
+        ApplicationBuilder()
+        .token(TELEGRAM_BOT_TOKEN)
+        .build()
+    )
+
+    # Register handlers
+    application.add_handler(CommandHandler("start", start_command))
+    application.add_handler(MessageHandler(filters.Document.ALL, handle_file))
+
+    # Initialize the application
+    await application.initialize()
+
+    # Start Kafka Producer and Consumer
+    await startup(application)
+
+    # Start the bot (polling)
+    await application.start()
+
+    # Begin polling (non-blocking)
+    await application.updater.start_polling()
+
+    # Run the bot until Ctrl+C is pressed or the process receives SIGINT, SIGTERM or SIGABRT
+    await application.updater.idle()
+
+    # Shutdown procedures
+    await shutdown(application)
+
 if __name__ == "__main__":
     try:
         asyncio.run(main())

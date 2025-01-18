@@ -69,23 +69,34 @@ class GapsManager:
             del self.pending_tasks[correlation_id]
             return
 
-        earliest_in_db = response.get("earliest_in_db")
-        missing_ranges = response.get("missing_ranges", [])
+        # Обработка различных типов ответов
+        response_type = response.get("type")
+        if response_type == "gap_scan_response":
+            earliest_in_db = response.get("earliest_in_db")
+            missing_ranges = response.get("missing_ranges", [])
 
-        logger.info(f"[GapsManager] chat_id={chat_id} earliest_in_db={earliest_in_db}, missing={missing_ranges}")
+            logger.info(f"[GapsManager] chat_id={chat_id} earliest_in_db={earliest_in_db}, missing={missing_ranges}")
 
-        # Получаем earliest_in_telegram
-        earliest_in_tg = await self._get_earliest_in_telegram(chat_id)
+            # Получаем earliest_in_telegram
+            earliest_in_tg = await self._get_earliest_in_telegram(chat_id)
 
-        if earliest_in_db and earliest_in_tg and earliest_in_db > (earliest_in_tg + 1):
-            self.state_mgr.update_backfill_from_id(chat_id, earliest_in_db)
-            logger.info(f"[GapsManager] Установлен backfill_from_id={earliest_in_db} (пропуск от {earliest_in_tg}..{earliest_in_db-1})")
+            if earliest_in_db and earliest_in_tg and earliest_in_db > (earliest_in_tg + 1):
+                self.state_mgr.update_backfill_from_id(chat_id, earliest_in_db)
+                logger.info(f"[GapsManager] Установлен backfill_from_id={earliest_in_db} (пропуск от {earliest_in_tg}..{earliest_in_db-1})")
 
-        # Обработаем missing_ranges
-        for (start, end) in missing_ranges:
-            bf_from = end + 1
-            self.state_mgr.update_backfill_from_id(chat_id, bf_from)
-            logger.info(f"[GapsManager] Пропуск {start}..{end}, ставим backfill_from_id={bf_from} для chat={chat_id}")
+            # Обработаем missing_ranges
+            for (start, end) in missing_ranges:
+                bf_from = end + 1
+                self.state_mgr.update_backfill_from_id(chat_id, bf_from)
+                logger.info(f"[GapsManager] Пропуск {start}..{end}, ставим backfill_from_id={bf_from} для chat={chat_id}")
+
+        elif response_type == "init_backfill":
+            # Инициируем бэкфилл для данного чата
+            logger.info(f"[GapsManager] Инициируем бэкфилл для chat_id={chat_id}")
+            self.state_mgr.update_backfill_from_id(chat_id, None)  # Установить необходимое начальное значение
+            # Здесь предполагается, что BackfillManager будет периодически проверять и начинать бэкфилл
+        else:
+            logger.warning(f"[GapsManager] Неизвестный тип ответа: {response_type}")
 
     async def _get_earliest_in_telegram(self, chat_id: int):
         """

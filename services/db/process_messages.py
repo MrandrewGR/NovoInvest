@@ -1,4 +1,4 @@
-# services/db/instructions_consumer.py
+# services/db/process_messages.py
 
 import os
 import json
@@ -104,6 +104,8 @@ def ensure_table_exists(conn, table_name):
             """)
             conn.commit()
             logger.info(f"Таблица {table_name} успешно создана.")
+        else:
+            logger.debug(f"Таблица {table_name} уже существует.")
 
 
 def ensure_partition_exists(conn, table_name, month_part):
@@ -259,6 +261,26 @@ def process_gap_scan_request(conn, message: dict, producer: KafkaProducer):
 
     table_name = get_table_name(name_uname, chat_id)  # Используем name_uname для построения имени таблицы
 
+    # Проверяем существование таблицы
+    with conn.cursor() as cur:
+        cur.execute("SELECT to_regclass(%s);", (table_name,))
+        exists = cur.fetchone()[0]
+        if not exists:
+            logger.warning(f"Таблица {table_name} не существует. Инициируем бэкфилл для чата {chat_id}.")
+            # Отправляем команду на бэкфилл
+            backfill_request = {
+                "type": "init_backfill",
+                "chat_id": chat_id,
+                "name_uname": name_uname
+            }
+            producer.send(KAFKA_GAP_SCAN_RESPONSE_TOPIC, value={
+                "type": "init_backfill",
+                "chat_id": chat_id,
+                "correlation_id": correlation_id,
+                "message": f"Таблица {table_name} не существует. Начинается бэкфилл."
+            })
+            return
+
     earliest_db = get_earliest_in_db(conn, chat_id, table_name)
     partitions = get_partitions_for_chat(conn, chat_id, table_name)
     all_missing = []
@@ -361,6 +383,6 @@ def run_consumer():
         producer.close()
         logger.info("KafkaProducer закрыт.")
 
+
 if __name__ == "__main__":
     run_consumer()
-

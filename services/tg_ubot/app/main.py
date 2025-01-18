@@ -132,6 +132,12 @@ async def run_userbot():
                 if data.get("type") == "gap_scan_response":
                     # вызываем gaps_manager.handle_gap_scan_response
                     await gaps_manager.handle_gap_scan_response(data)
+                elif data.get("type") == "init_backfill":
+                    # Инициируем бэкфилл для данного чата
+                    chat_id = data.get("chat_id")
+                    if chat_id:
+                        logger.info(f"[main] Инициируем бэкфилл для chat_id={chat_id}")
+                        await backfill_manager._do_chat_backfill(chat_id)
                 else:
                     logger.debug(f"[gap_scan_response_listener] Получено другое сообщение {data}")
             else:

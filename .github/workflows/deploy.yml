@@ -59,14 +59,15 @@ jobs:
             echo "KAFKA_CONFIG_CHANGED=true" >> $GITHUB_ENV
           else
             echo "KAFKA_CONFIG_CHANGED=false" >> $GITHUB_ENV
+          fi
 
-      - name: Debug Git Diff
-        run: |
-          echo "CHANGED_SERVICES: $CHANGED_SERVICES"
-          echo "DOCKER_COMPOSE_CHANGED: $DOCKER_COMPOSE_CHANGED"
-          echo "FULL_DEPLOY: $FULL_DEPLOY"
-          echo "KAFKA_CONFIG_CHANGED: $KAFKA_CONFIG_CHANGED"
-          git diff --name-only ${{ github.event.before }} ${{ github.sha }} -- services/ docker-compose.yml .github/workflows/deploy.yml
+#      - name: Debug Git Diff
+#        run: |
+#          echo "CHANGED_SERVICES: $CHANGED_SERVICES"
+#          echo "DOCKER_COMPOSE_CHANGED: $DOCKER_COMPOSE_CHANGED"
+#          echo "FULL_DEPLOY: $FULL_DEPLOY"
+#          echo "KAFKA_CONFIG_CHANGED: $KAFKA_CONFIG_CHANGED"
+#          git diff --name-only ${{ github.event.before }} ${{ github.sha }} -- services/ docker-compose.yml .github/workflows/deploy.yml
 
       - name: Install rsync and jq
         run: |

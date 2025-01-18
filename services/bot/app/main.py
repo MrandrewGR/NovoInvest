@@ -1,5 +1,3 @@
-# File location: ./services/bot/app/main.py
-
 import os
 import time
 import json
@@ -188,7 +186,7 @@ async def consume_results_from_kafka(application):
         await consumer.stop()
 
 async def startup(application: ContextTypes.DEFAULT_TYPE):
-    """Функция, вызываемая при запуске бота."""
+    """Функция запуска, вызываемая при старте бота."""
     # Создаём Kafka Producer и добавляем его в bot_data
     producer = AIOKafkaProducer(
         bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
@@ -198,7 +196,8 @@ async def startup(application: ContextTypes.DEFAULT_TYPE):
     application.bot_data['producer'] = producer
 
     # Запускаем потребитель Kafka в фоновом задании
-    application.bot_data['consumer_task'] = asyncio.create_task(consume_results_from_kafka(application))
+    consumer_task = asyncio.create_task(consume_results_from_kafka(application))
+    application.bot_data['consumer_task'] = consumer_task
     logger.info("Бот запущен. Ожидаю сообщений...")
 
 async def shutdown(application: ContextTypes.DEFAULT_TYPE):
@@ -227,7 +226,6 @@ async def main():
     application = (
         ApplicationBuilder()
         .token(TELEGRAM_BOT_TOKEN)
-        .concurrent_updates(False)  # Отключаем одновременные обновления
         .build()
     )
 
@@ -235,15 +233,15 @@ async def main():
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(MessageHandler(filters.Document.ALL, handle_file))
 
-    # Регистрация функций старта и остановки
-    application.job_queue.run_once(lambda context: asyncio.create_task(startup(application)), when=0)
-    application.add_error_handler(lambda update, context: logger.error(f"Ошибка: {context.error}"))
+    # Запускаем Kafka Producer и Consumer
+    await startup(application)
 
     # Запускаем бота
-    await application.run_polling(stop_signals=None, timeout=60)
-
-    # При завершении работы, вызываем shutdown
-    await shutdown(application)
+    try:
+        await application.run_polling()
+    finally:
+        # При завершении работы, вызываем shutdown
+        await shutdown(application)
 
 if __name__ == "__main__":
     try:

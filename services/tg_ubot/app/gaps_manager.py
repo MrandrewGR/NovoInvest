@@ -58,6 +58,7 @@ class GapsManager:
             response = await asyncio.wait_for(fut, timeout=30.0)
         except asyncio.TimeoutError:
             logger.warning(f"[GapsManager] Не дождались gap_scan_response для chat_id={chat_id}")
+            del self.pending_tasks[correlation_id]
             return
 
         earliest_in_db = response.get("earliest_in_db")
@@ -91,7 +92,7 @@ class GapsManager:
             logger.warning(f"[GapsManager] _get_earliest_in_telegram({chat_id}) ошибка: {e}")
             return None
 
-    def handle_gap_scan_response(self, data: dict):
+    async def handle_gap_scan_response(self, data: dict):
         """
         Вызывается из kafka_consumer, когда пришло сообщение type=gap_scan_response
         Ищем correlation_id, резолвим future.

@@ -7,6 +7,7 @@ from telethon.tl.types import Message
 from app.config import settings
 from app.process_messages import serialize_message
 from app.utils import human_like_delay, ensure_dir
+import json
 
 logger = logging.getLogger("unified_handler")
 
@@ -119,7 +120,7 @@ async def process_message_event(event, event_type, message_buffer, counter, chat
         # Send to Kafka
         kafka_topic = settings.KAFKA_UBOT_OUTPUT_TOPIC
         await message_buffer.put((kafka_topic, message_data))
-        logger.info(f"[unified_handler] Processed message {msg.id} from {chat_info.get('chat_title')}, target_id={chat_info.get('target_id')}")
+        logger.info(f"[unified_handler] Processed message {msg.id} from {chat_info.get('chat_title')}, name_uname={chat_info.get('name_uname')}")
 
     except Exception as e:
         logger.exception(f"[unified_handler] Error in process_message_event: {e}")

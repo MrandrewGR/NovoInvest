@@ -70,7 +70,7 @@ async def get_all_chats_info(client: TelegramClient):
             "target_id": target_id,
             "chat_title": chat_title,
             "chat_username": chat_username,
-            "name_uname": name_uname,  # Renamed from 'name_or_username' to 'name_uname'
+            "name_uname": name_uname,  # Standardized field name
             "entity_type": entity_type
         }
         logger.debug(f"Saved in chats_info[{target_id}]: {chats_info[target_id]}")

@@ -136,7 +136,8 @@ async def run_userbot():
                     # Initiate backfill for the given chat
                     chat_id = data.get("chat_id")
                     if chat_id:
-                        logger.info(f"[main] Initiating backfill for chat_id={chat_id}")
+                        name_uname = chat_id_to_data.get(chat_id, {}).get("name_uname", "Unknown")
+                        logger.info(f"[main] Initiating backfill for chat_id={chat_id}, name_uname={name_uname}")
                         await backfill_manager._do_chat_backfill(chat_id)
                 else:
                     logger.debug(f"[gap_scan_response_listener] Received other message {data}")

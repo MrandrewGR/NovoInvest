@@ -6,7 +6,8 @@ from telethon import errors
 from telethon.tl.patched import Message
 from .utils import human_like_delay, get_delay_settings
 from .state_manager import StateManager
-from .process_messages import get_table_name  # Импортируем функцию для формирования названий таблиц
+from .process_messages import get_table_name
+from .utils import human_like_delay, get_delay_settings, serialize_message
 
 logger = logging.getLogger("backfill_manager")
 
@@ -107,7 +108,11 @@ class BackfillManager:
                 dmin, dmax = get_delay_settings("chat")
                 await human_like_delay(dmin, dmax)
 
-                data = await self._serialize_message(msg, name_uname)  # Передаём name_uname
+                # Используем функцию serialize_message вместо self._serialize_message
+                data = serialize_message(msg)
+                # Если необходимо добавить name_uname в данные
+                data['name_uname'] = name_uname
+
                 await self.message_callback(data)
 
                 if msg.id < backfill_from_id:

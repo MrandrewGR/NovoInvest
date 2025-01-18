@@ -77,7 +77,7 @@ class BackfillManager:
 
         # Get name_uname for table naming
         chat_info = self.chat_id_to_data.get(chat_id, {})
-        name_uname = chat_info.get("name_or_username", "Unknown")
+        name_uname = chat_info.get("name_uname", "Unknown")
         table_name = get_table_name(name_uname, chat_id)  # Use name_uname
 
         logger.info(

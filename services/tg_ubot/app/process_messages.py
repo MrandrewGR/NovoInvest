@@ -194,7 +194,7 @@ def serialize_message(msg: Message, event_type: str, chat_info: dict) -> dict:
         # Chat Information
         target_id = chat_info.get("target_id", "unknown")
         chat_title = chat_info.get("chat_title", "Untitled")
-        name_uname = chat_info.get("name_uname", "Unknown")
+        name_uname = chat_info.get("name_uname", "Unknown")  # Ensuring 'name_uname' is fetched correctly
 
         # Month Part for Partitioning
         month_part = msg.date.strftime("%Y-%m")
@@ -217,7 +217,7 @@ def serialize_message(msg: Message, event_type: str, chat_info: dict) -> dict:
             "chat_id": msg.chat_id,
             "chat_title": chat_title,
             "target_id": target_id,
-            "name_uname": name_uname,
+            "name_uname": name_uname,  # Correctly set from chat_info
             "month_part": month_part,
         }
 

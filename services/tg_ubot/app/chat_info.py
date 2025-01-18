@@ -13,21 +13,21 @@ logger = logging.getLogger("chat_info")
 
 async def get_all_chats_info(client: TelegramClient):
     """
-    Возвращает словарь chat_id_to_data (dict), где ключ = target_id, значение = метаданные:
+    Returns a dictionary chat_id_to_data (dict) where key = target_id and value = metadata:
     {
       target_id: {
         "target_id": target_id,
         "chat_title": ...,
         "chat_username": ...,
-        "name_or_username": ...,
+        "name_uname": ...,
         "entity_type": ...
       }, ...
     }
 
-    Особенности:
-    - Для каналов и супергрупп делаем target_id = -100XXXXXXXXXX (конкатенация -100 + entity.id)
-    - Для обычных групп и пользователей оставляем target_id = entity.id (положительное или небольшое отрицательное).
-    - Исключаем SavedMessages (777000), BotFather, Telegram, если указано в EXCLUDED_CHAT_IDS / EXCLUDED_USERNAMES.
+    Features:
+    - For channels and supergroups, target_id = -100XXXXXXXXXX (concatenation of -100 + entity.id)
+    - For regular groups and users, target_id = entity.id (positive or slightly negative)
+    - Excludes SavedMessages (777000), BotFather, Telegram, if specified in EXCLUDED_CHAT_IDS / EXCLUDED_USERNAMES.
     """
     chats_info = {}
     all_dialogs = await client.get_dialogs()
@@ -40,68 +40,68 @@ async def get_all_chats_info(client: TelegramClient):
         if not entity:
             continue
 
-        # Сырой (обычный) entity.id (целое число)
+        # Raw (normal) entity.id (integer)
         raw_id = getattr(entity, 'id', None)
         if raw_id is None:
             continue
 
-        # Проверка username на исключения
+        # Check username for exclusions
         raw_uname = getattr(entity, 'username', '') or ''
         if raw_uname.lower() in excluded_unames:
-            logger.info(f"Исключаем по username={raw_uname}, id={raw_id}")
+            logger.info(f"Excluding by username={raw_uname}, id={raw_id}")
             continue
 
         if raw_id in excluded_ids:
-            logger.info(f"Исключаем по chat_id={raw_id} (из EXCLUDED_CHAT_IDS)")
+            logger.info(f"Excluding by chat_id={raw_id} (from EXCLUDED_CHAT_IDS)")
             continue
 
-        # Определяем правильный target_id и тип
+        # Determine the correct target_id and type
         target_id, entity_type = get_target_id_and_type(entity)
         if target_id is None:
-            logger.debug(f"Не удалось вычислить target_id для raw_id={raw_id}, entity_type={entity_type}. Пропускаем.")
+            logger.debug(f"Could not determine target_id for raw_id={raw_id}, entity_type={entity_type}. Skipping.")
             continue
 
-        # Получаем human-readable поля
+        # Get human-readable fields
         chat_title = get_chat_title(entity)
         chat_username = getattr(entity, 'username', '') or ''
-        name_or_username = get_name_or_username(entity)
+        name_uname = get_name_or_username(entity)
 
         chats_info[target_id] = {
             "target_id": target_id,
             "chat_title": chat_title,
             "chat_username": chat_username,
-            "name_or_username": name_or_username,
+            "name_uname": name_uname,  # Renamed from 'name_or_username' to 'name_uname'
             "entity_type": entity_type
         }
-        logger.debug(f"Сохранено в chats_info[{target_id}]: {chats_info[target_id]}")
+        logger.debug(f"Saved in chats_info[{target_id}]: {chats_info[target_id]}")
 
-    logger.info(f"Всего собрано чатов: {len(chats_info)}")
+    logger.info(f"Total chats collected: {len(chats_info)}")
     return chats_info
 
 
 def get_target_id_and_type(entity):
     """
-    Возвращаем (target_id, entity_type) с «телеграмным» форматом для каналов/супергрупп:
-      - Если Channel (broadcast || megagroup) => -100XXXXXXXXXX (string concat),
-      - Иначе возвращаем entity.id как есть.
+    Returns (target_id, entity_type) with Telegram's format for channels/supergroups:
+      - If Channel (broadcast || megagroup) => -100XXXXXXXXXX (string concat),
+      - Otherwise, return entity.id as is.
     """
     if isinstance(entity, Channel):
-        # Канал (broadcast) или супергруппа (megagroup)
+        # Channel (broadcast) or supergroup (megagroup)
         if getattr(entity, 'broadcast', False) or getattr(entity, 'megagroup', False):
-            # Пример: entity.id = 1385413506 => target_id = -1001385413506
+            # Example: entity.id = 1385413506 => target_id = -1001385413506
             str_id = f"-100{entity.id}"
             return int(str_id), "ChannelOrSupergroup"
         else:
-            # Неизвестный тип канала
+            # Unknown channel type
             str_id = f"-100{entity.id}"
             return int(str_id), "UnknownChannelType"
 
     elif isinstance(entity, Chat):
-        # Обычная группа
+        # Regular group
         return entity.id, "Chat"
 
     elif isinstance(entity, User):
-        # Пользователь
+        # User
         return entity.id, "User"
 
     elif isinstance(entity, ChatForbidden):
@@ -112,7 +112,7 @@ def get_target_id_and_type(entity):
 
 
 def get_chat_title(entity):
-    """Вернём title, или для User соберём FirstName + LastName."""
+    """Returns title, or for User, concatenates FirstName + LastName."""
     if hasattr(entity, 'title'):
         return entity.title
     elif isinstance(entity, User):
@@ -123,7 +123,7 @@ def get_chat_title(entity):
 
 
 def get_name_or_username(entity):
-    """Вернём @username, или FName+LName, или title, или Unknown."""
+    """Returns @username, or FirstName+LastName, or title, or Unknown."""
     uname = getattr(entity, 'username', '') or ''
     if uname:
         return "@" + uname

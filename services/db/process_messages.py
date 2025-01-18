@@ -360,3 +360,7 @@ def run_consumer():
         logger.info("DB соединение закрыто.")
         producer.close()
         logger.info("KafkaProducer закрыт.")
+
+if __name__ == "__main__":
+    run_consumer()
+

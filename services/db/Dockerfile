@@ -22,7 +22,7 @@ COPY supervisord.conf /app/supervisord.conf
 COPY entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 
-# Копирование wait-for-services.sh и установка прав (если еще не сделано)
+# Копирование wait-for-services.sh и установка прав
 RUN chmod +x /app/wait-for-services.sh
 
 # Установка точки входа

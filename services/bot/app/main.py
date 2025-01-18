@@ -24,10 +24,10 @@ from app.config import (
 )
 from app.logger import logger
 
-# Словарь, где ключ: user_id (str), значение: chat_id (int)
+# Dictionary mapping user_id (str) to chat_id (int)
 USER_CHAT_MAP = {}
 
-# Ретраи для отправки сообщений в Telegram
+# Retry configuration for sending messages to Telegram
 @retry(
     stop=stop_after_attempt(5),
     wait=wait_exponential(multiplier=1, min=2, max=10),
@@ -39,7 +39,7 @@ async def send_message_with_retry(bot, chat_id: int, text: str):
     logger.info(f"Отправлено сообщение пользователю {chat_id}: {text}")
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Стартовая команда /start."""
+    """Handle the /start command."""
     user_id = update.effective_user.id
     USER_CHAT_MAP[str(user_id)] = update.effective_chat.id
     try:
@@ -49,9 +49,9 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    Обработчик входящих файлов.
-    Проверяем, что файл — xml и пользователь есть в вайтлисте.
-    Переименовываем файл в user_id_timestamp.xml.
+    Handle incoming files.
+    Validate that the file is XML and the user is whitelisted.
+    Rename the file to user_id_timestamp.xml.
     """
     user_id = update.effective_user.id
     chat_id = update.effective_chat.id
@@ -71,7 +71,7 @@ async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     document = update.message.document
     file_name = document.file_name
 
-    # Проверка, что файл действительно .xml
+    # Check if the file is indeed .xml
     if not file_name.lower().endswith(".xml"):
         try:
             await send_message_with_retry(context.bot, chat_id, "Кажется, это не XML-файл. Попробуй снова.")
@@ -81,16 +81,16 @@ async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     file_id = document.file_id
 
-    # Переименовываем файл -> user_id_timestamp.xml
+    # Rename the file -> user_id_timestamp.xml
     ts = int(time.time())
     new_file_name = f"{user_id}_{ts}.xml"
     file_path_local = os.path.join(FILES_DIR, new_file_name)
 
-    # Создаем директорию для файлов, если её ещё нет
+    # Create the directory for files if it doesn't exist
     os.makedirs(FILES_DIR, exist_ok=True)
 
     try:
-        # Скачиваем файл
+        # Download the file
         new_file = await context.bot.get_file(file_id)
         await new_file.download_to_drive(file_path_local)
         logger.info(f"Файл сохранён: {file_path_local}")
@@ -102,7 +102,7 @@ async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.error(f"Ошибка при отправке сообщения об ошибке сохранения файла пользователю {user_id}: {send_err}")
         return
 
-    # === Отправка уведомления в Kafka ===
+    # === Send notification to Kafka ===
     try:
         message = {
             "user_id": str(user_id),
@@ -129,7 +129,7 @@ async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def consume_results_from_kafka(application):
     """
-    Асинхронный потребитель Kafka, который слушает результаты обработки и отправляет их пользователям.
+    Asynchronous Kafka consumer that listens for processing results and sends them to users.
     """
     consumer = AIOKafkaConsumer(
         KAFKA_RESULT_TOPIC,
@@ -138,7 +138,7 @@ async def consume_results_from_kafka(application):
         value_deserializer=lambda x: x.decode('utf-8')
     )
 
-    # Подключаемся к Kafka
+    # Connect to Kafka
     await consumer.start()
     logger.info(f"[bot] Consumer запущен, слушаем топик '{KAFKA_RESULT_TOPIC}'...")
 
@@ -184,64 +184,45 @@ async def consume_results_from_kafka(application):
 
     finally:
         await consumer.stop()
+        logger.info("Kafka Consumer остановлен.")
 
 async def startup(application: ContextTypes.DEFAULT_TYPE):
-    """Функция запуска, вызываемая при старте бота."""
-    # Создаём Kafka Producer и добавляем его в bot_data
+    """Startup function called when the bot starts."""
+    # Create Kafka Producer
     producer = AIOKafkaProducer(
         bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
-        value_serializer=lambda v: v  # уже сериализованные байты
+        value_serializer=lambda v: v  # Already serialized bytes
     )
     await producer.start()
     application.bot_data['producer'] = producer
+    logger.info("Kafka Producer запущен.")
 
-    # Запускаем потребитель Kafka в фоновом задании
+    # Start Kafka Consumer as a background task
     consumer_task = asyncio.create_task(consume_results_from_kafka(application))
     application.bot_data['consumer_task'] = consumer_task
-    logger.info("Бот запущен. Ожидаю сообщений...")
+    logger.info("Kafka Consumer задача запущена.")
 
 async def shutdown(application: ContextTypes.DEFAULT_TYPE):
-    """Функция, вызываемая при остановке бота."""
-    # Останавливаем Kafka Producer
+    """Shutdown function called when the bot stops."""
+    # Stop Kafka Producer
     producer: AIOKafkaProducer = application.bot_data.get('producer')
     if producer:
         await producer.stop()
+        logger.info("Kafka Producer остановлен.")
 
-    # Останавливаем потребитель Kafka
+    # Stop Kafka Consumer
     consumer_task: asyncio.Task = application.bot_data.get('consumer_task')
     if consumer_task:
         consumer_task.cancel()
         try:
             await consumer_task
         except asyncio.CancelledError:
-            pass
+            logger.info("Kafka Consumer задача отменена.")
 
-    logger.info("Бот остановлен.")
-
-async def main():
-    """Главная точка входа в приложение (бот)."""
-    logger.info("Запуск Телеграм-бота для приёма XML-файлов...")
-
-    # Создаём приложение
-    application = (
-        ApplicationBuilder()
-        .token(TELEGRAM_BOT_TOKEN)
-        .build()
-    )
-
-    # Регистрируем хендлеры
-    application.add_handler(CommandHandler("start", start_command))
-    application.add_handler(MessageHandler(filters.Document.ALL, handle_file))
-
-    # Запускаем Kafka Producer и Consumer
-    await startup(application)
-
-    # Запускаем бота
-    try:
-        await application.run_polling()
-    finally:
-        # При завершении работы, вызываем shutdown
-        await shutdown(application)
+    # Stop the Telegram application
+    await application.stop()
+    await application.shutdown()
+    logger.info("Бот полностью остановлен.")
 
 if __name__ == "__main__":
     try:

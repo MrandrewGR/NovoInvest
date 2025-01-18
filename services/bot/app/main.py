@@ -3,7 +3,6 @@
 import os
 import time
 import json
-import threading
 import asyncio
 import logging
 
@@ -30,12 +29,6 @@ from app.logger import logger
 
 # Словарь, где ключ: user_id (str), значение: chat_id (int)
 USER_CHAT_MAP = {}
-
-# Настройка логирования
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] %(name)s - %(message)s'
-)
 
 # Ретраи для отправки сообщений в Telegram
 @retry(
@@ -137,7 +130,7 @@ async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Ошибка при отправке подтверждения пользователю {user_id}: {e}")
 
-async def consume_results_from_kafka(application, loop):
+async def consume_results_from_kafka(application):
     """
     Асинхронный потребитель Kafka, который слушает результаты обработки и отправляет их пользователям.
     """
@@ -195,43 +188,42 @@ async def consume_results_from_kafka(application, loop):
     finally:
         await consumer.stop()
 
-def main():
+async def main():
     """Главная точка входа в приложение (бот)."""
     logger.info("Запуск Телеграм-бота для приёма XML-файлов...")
 
-    # Создаём событие
-    loop = asyncio.get_event_loop()
+    # Создаём приложение
+    application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
 
     # Создаём Kafka Producer и добавляем его в bot_data
-    async def create_application():
-        application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
+    producer = AIOKafkaProducer(
+        bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
+        value_serializer=lambda v: v  # уже сериализованные байты
+    )
+    await producer.start()
+    application.bot_data['producer'] = producer
 
-        producer = AIOKafkaProducer(
-            bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
-            value_serializer=lambda v: v  # уже сериализованные байты
-        )
-        await producer.start()
-        application.bot_data['producer'] = producer
+    # Регистрируем хендлеры
+    application.add_handler(CommandHandler("start", start_command))
+    application.add_handler(MessageHandler(filters.Document.ALL, handle_file))
 
-        # Регистрируем хендлеры
-        application.add_handler(CommandHandler("start", start_command))
-        application.add_handler(MessageHandler(filters.Document.ALL, handle_file))
+    # Запускаем потребитель Kafka в фоновом задании
+    consumer_task = asyncio.create_task(consume_results_from_kafka(application))
 
-        # Запускаем потребитель Kafka в фоновом задании
-        asyncio.create_task(consume_results_from_kafka(application, loop))
-
-        logger.info("Бот запущен. Ожидаю сообщений...")
-
-        # Запускаем бота
-        await application.run_polling()
+    logger.info("Бот запущен. Ожидаю сообщений...")
 
     try:
-        loop.run_until_complete(create_application())
-    except (KeyboardInterrupt, SystemExit):
-        logger.info("Остановка бота...")
+        # Запускаем бота
+        await application.run_polling()
     finally:
-        loop.run_until_complete(loop.shutdown_asyncgens())
-        loop.close()
+        # Завершение работы
+        await producer.stop()
+        consumer_task.cancel()
+        try:
+            await consumer_task
+        except asyncio.CancelledError:
+            pass
+        await application.shutdown()
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

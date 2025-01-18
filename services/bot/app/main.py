@@ -164,6 +164,12 @@ async def consume_results_from_kafka(application):
         logger.info("Kafka Consumer остановлен.")
 
 
+def run_bot():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(main())
+
+
 async def main():
     """Главная точка входа."""
     logger.info("Запуск Telegram-бота для приёма XML-файлов.")
@@ -199,6 +205,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    # Запускаем событийный цикл напрямую
-    asyncio.run(main())
-
+    run_bot()

@@ -60,26 +60,51 @@ jobs:
           else
             echo "KAFKA_CONFIG_CHANGED=false" >> $GITHUB_ENV
           fi
+        shell: bash
+        # Удалены переменные окружения из env, чтобы избежать их вывода в логи
 
-#      - name: Debug Git Diff
-#        run: |
-#          echo "CHANGED_SERVICES: $CHANGED_SERVICES"
-#          echo "DOCKER_COMPOSE_CHANGED: $DOCKER_COMPOSE_CHANGED"
-#          echo "FULL_DEPLOY: $FULL_DEPLOY"
-#          echo "KAFKA_CONFIG_CHANGED: $KAFKA_CONFIG_CHANGED"
-#          git diff --name-only ${{ github.event.before }} ${{ github.sha }} -- services/ docker-compose.yml .github/workflows/deploy.yml
+      # --- Удалены шаги Debug Git Diff для безопасности ---
 
       - name: Install rsync and jq
         run: |
           sudo apt-get update
           sudo apt-get install -y rsync jq
 
+      # --- Обновлённый шаг установки Docker на Runner ---
+
       - name: Install Docker on Runner
         run: |
+          # Удаляем старые версии Docker, если они установлены
+          sudo apt-get remove -y docker docker-engine docker.io containerd runc || true
+
+          # Устанавливаем зависимости
           sudo apt-get update
-          sudo apt-get install -y docker.io
+          sudo apt-get install -y \
+            ca-certificates \
+            curl \
+            gnupg \
+            lsb-release
+
+          # Добавляем официальный GPG ключ Docker
+          sudo mkdir -p /etc/apt/keyrings
+          curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+
+          # Настраиваем репозиторий Docker
+          echo \
+            "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+            $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+          # Устанавливаем Docker Engine
+          sudo apt-get update
+          sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+          # Запускаем и включаем Docker
           sudo systemctl start docker
+          sudo systemctl enable docker
+
+          # Добавляем текущего пользователя в группу docker
           sudo usermod -aG docker $USER
+
           # Обновляем группу для текущего сеанса
           newgrp docker <<EOF
           docker --version

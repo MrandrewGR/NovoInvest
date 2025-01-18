@@ -50,11 +50,22 @@ jobs:
             echo "DOCKER_COMPOSE_CHANGED=true" >> $GITHUB_ENV
           fi
 
+      - name: Check if Kafka Config Changed
+        id: kafka_config
+        run: |
+          CONFIG_CHANGED=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} -- services/kafka/ docker-compose.yml)
+          if [ -n "$CONFIG_CHANGED" ]; then
+            echo "KAFKA_CONFIG_CHANGED=true" >> $GITHUB_ENV
+          else
+            echo "KAFKA_CONFIG_CHANGED=false" >> $GITHUB_ENV
+          fi
+
       - name: Debug Git Diff
         run: |
           echo "CHANGED_SERVICES: $CHANGED_SERVICES"
           echo "DOCKER_COMPOSE_CHANGED: $DOCKER_COMPOSE_CHANGED"
           echo "FULL_DEPLOY: $FULL_DEPLOY"
+          echo "KAFKA_CONFIG_CHANGED: $KAFKA_CONFIG_CHANGED"
           git diff --name-only ${{ github.event.before }} ${{ github.sha }} -- services/ docker-compose.yml .github/workflows/deploy.yml
 
       - name: Install rsync and jq
@@ -151,11 +162,13 @@ jobs:
           rm session_name.session
 
       # --- Опционально, чистое перезапускание Kafka (если действительно нужно) ---
-      - name: Stop Kafka
+      - name: Stop Kafka if Config Changed
+        if: env.KAFKA_CONFIG_CHANGED == 'true'
         run: |
           ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app && docker compose stop kafka"
 
-      - name: Clean up Zookeeper node for Kafka broker
+      - name: Clean up Zookeeper node if Config Changed
+        if: env.KAFKA_CONFIG_CHANGED == 'true'
         run: |
           ssh dev@${{ env.SSH_HOST }} "docker exec zookeeper zkCli.sh -server localhost:2181 delete /brokers/ids/1 || echo 'Node /brokers/ids/1 does not exist'"
 

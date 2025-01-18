@@ -181,15 +181,24 @@ async def main():
     await producer.start()
     application.bot_data["producer"] = producer
 
-    # Запуск Kafka Consumer
-    asyncio.create_task(consume_results_from_kafka(application))
+    # Запуск Kafka Consumer в фоновом режиме
+    consumer_task = asyncio.create_task(consume_results_from_kafka(application))
 
     try:
+        # Используем run_polling в основном цикле приложения
         await application.run_polling()
     finally:
+        # Завершаем задачи при остановке приложения
+        consumer_task.cancel()
+        try:
+            await consumer_task
+        except asyncio.CancelledError:
+            logger.info("Kafka Consumer task was cancelled.")
         await producer.stop()
         logger.info("Бот завершил работу.")
 
 
 if __name__ == "__main__":
+    # Запускаем событийный цикл напрямую
     asyncio.run(main())
+

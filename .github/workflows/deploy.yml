@@ -59,7 +59,6 @@ jobs:
             echo "KAFKA_CONFIG_CHANGED=true" >> $GITHUB_ENV
           else
             echo "KAFKA_CONFIG_CHANGED=false" >> $GITHUB_ENV
-          fi
 
       - name: Debug Git Diff
         run: |
@@ -74,6 +73,23 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y rsync jq
 
+      - name: Install Docker on Runner
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y docker.io
+          sudo systemctl start docker
+          sudo usermod -aG docker $USER
+          # Обновляем группу для текущего сеанса
+          newgrp docker <<EOF
+          docker --version
+          docker compose version
+          EOF
+
+      - name: Validate docker-compose.yml
+        run: |
+          docker compose config -f docker-compose.yml
+        shell: bash
+
       - name: Set up SSH Agent
         uses: webfactory/ssh-agent@v0.5.3
         with:
@@ -81,6 +97,10 @@ jobs:
 
       - name: Add known hosts
         run: ssh-keyscan -H ${{ env.SSH_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Remove old docker-compose.yml on Server
+        run: |
+          ssh dev@${{ env.SSH_HOST }} "rm -f /home/dev/app/docker-compose.yml"
 
       - name: Test SSH Connection
         run: ssh dev@${{ env.SSH_HOST }} 'echo "SSH connection established"'
@@ -162,7 +182,6 @@ jobs:
           rsync -avz session_name.session dev@${{ env.SSH_HOST }}:/home/dev/app/
           rm session_name.session
 
-      # --- Опционально, чистое перезапускание Kafka (если действительно нужно) ---
       - name: Stop Kafka if Config Changed
         if: env.KAFKA_CONFIG_CHANGED == 'true'
         run: |
@@ -176,8 +195,6 @@ jobs:
       - name: Set correct permissions for Kafka data volume
         run: |
           ssh dev@${{ env.SSH_HOST }} "docker run --rm -v kafka_data:/data busybox chown -R 1000:1000 /data"
-
-      # ---------------------------------------------------------------------------
 
       - name: Docker Compose Up
         run: |

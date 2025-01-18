@@ -1,3 +1,4 @@
+# ./github/workflows/deploy.yml
 name: Deploy to Hetzner
 
 on:
@@ -132,7 +133,7 @@ jobs:
           fi
 
           # Отправляем весь проект, чтобы были docker-compose.yml и т.д.
-          rsync -avz --delete --exclude '.git' --exclude '.github' --exclude 'env/' . dev@${{ env.SSH_HOST }}:/home/dev/app/
+          rsync -avz --delete --exclude '.git' --exclude '.github' --exclude 'env/' . dev@${{ env.SSH_HOST }}:/home/dev/app/ --rsync-path="sudo rsync"
 
       - name: Create env files on server
         run: |

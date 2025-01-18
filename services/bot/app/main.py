@@ -1,8 +1,8 @@
 import os
 import time
 import json
-import asyncio
 import threading
+import asyncio
 
 from telegram import Update
 from telegram.ext import (
@@ -10,7 +10,6 @@ from telegram.ext import (
     CommandHandler,
     MessageHandler,
     filters,
-    ContextTypes
 )
 from kafka import KafkaProducer, KafkaConsumer
 import logging
@@ -21,25 +20,23 @@ from app.config import (
     KAFKA_TOPIC,
     KAFKA_RESULT_TOPIC,
     FILES_DIR,
-    ALLOWED_USER_IDS
+    ALLOWED_USER_IDS,
 )
 from app.logger import logger
 
 # Словарь для хранения соответствий user_id и chat_id
 USER_CHAT_MAP = {}
 
-
-async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def start_command(update: Update, context):
     """Обработка команды /start."""
     user_id = update.effective_user.id
     USER_CHAT_MAP[str(user_id)] = update.effective_chat.id
     await update.message.reply_text("Привет! Пришли мне XML-файл, и я передам его на обработку.")
 
-
-async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_file(update: Update, context):
     """
     Обработка входящих файлов.
-    Проверяем формат XML, авторизуем пользователя и сохраняем файл.
+    Проверяем формат XML и вайтлист пользователей, затем переименовываем файл и сохраняем.
     """
     user_id = update.effective_user.id
     chat_id = update.effective_chat.id
@@ -50,9 +47,13 @@ async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("У вас нет разрешения отправлять файлы этому боту.")
         return
 
+    if not update.message.document:
+        return
+
     document = update.message.document
     file_name = document.file_name
 
+    # Проверка формата файла
     if not file_name.lower().endswith(".xml"):
         await update.message.reply_text("Кажется, это не XML-файл. Попробуй снова.")
         return
@@ -73,6 +74,7 @@ async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Произошла ошибка при сохранении файла.")
         return
 
+    # Отправка уведомления в Kafka
     try:
         producer = KafkaProducer(
             bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
@@ -81,19 +83,20 @@ async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         message = {"user_id": str(user_id), "file_path": file_path_local}
         producer.send(KAFKA_TOPIC, message)
         producer.flush()
-        logger.info(f"Сообщение отправлено в Kafka (топик={KAFKA_TOPIC}): {message}")
+        logger.info(f"Сообщение отправлено в Kafka: {message}")
     except Exception as e:
         logger.error(f"Ошибка при отправке сообщения в Kafka: {e}")
-        await update.message.reply_text("Ошибка при отправке файла в обработку.")
+        await update.message.reply_text("Ошибка при уведомлении сервиса обработки файлов.")
         return
 
-    await update.message.reply_text(f"Файл '{file_name}' принят и отправлен на обработку.")
+    await update.message.reply_text(
+        f"Файл '{file_name}' получен и сохранён как '{new_file_name}'. Отправлен на обработку."
+    )
 
-
-def consume_results_from_kafka(application):
+def consume_results_from_kafka(application, loop):
     """
     Kafka Consumer для получения результатов обработки файлов.
-    Работает в отдельном потоке.
+    Работает в отдельном потоке, использует event loop из основного потока.
     """
     consumer = KafkaConsumer(
         KAFKA_RESULT_TOPIC,
@@ -123,13 +126,13 @@ def consume_results_from_kafka(application):
                     [f"- {item.get('name')} (ISIN: {item.get('isin')}): {item.get('quantity')}" for item in result]
                 )
 
+            # Запускаем отправку сообщения в основном event loop
             asyncio.run_coroutine_threadsafe(
                 application.bot.send_message(chat_id=chat_id, text=text_msg),
-                asyncio.get_event_loop()
+                loop
             )
         except Exception as e:
             logger.error(f"Ошибка при обработке сообщения из Kafka: {e}")
-
 
 def main():
     """Главная точка входа."""
@@ -139,15 +142,18 @@ def main():
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(MessageHandler(filters.Document.ALL, handle_file))
 
+    # Создаём event loop
+    loop = asyncio.get_event_loop()
+
+    # Запускаем Kafka Consumer в отдельном потоке
     kafka_thread = threading.Thread(
         target=consume_results_from_kafka,
-        args=(application,),
+        args=(application, loop),
         daemon=True
     )
     kafka_thread.start()
 
     application.run_polling()
-
 
 if __name__ == "__main__":
     main()

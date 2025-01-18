@@ -1,18 +1,19 @@
-import asyncio
 import os
 import time
 import json
+import asyncio
+import threading
 
 from telegram import Update
 from telegram.ext import (
-    Application,
+    ApplicationBuilder,
     CommandHandler,
     MessageHandler,
     filters,
-    ContextTypes,
+    ContextTypes
 )
-from aiokafka import AIOKafkaProducer, AIOKafkaConsumer
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from kafka import KafkaProducer, KafkaConsumer
+import logging
 
 from app.config import (
     TELEGRAM_BOT_TOKEN,
@@ -20,49 +21,40 @@ from app.config import (
     KAFKA_TOPIC,
     KAFKA_RESULT_TOPIC,
     FILES_DIR,
-    ALLOWED_USER_IDS,
+    ALLOWED_USER_IDS
 )
 from app.logger import logger
 
+# Словарь для хранения соответствий user_id и chat_id
 USER_CHAT_MAP = {}
-
-@retry(
-    stop=stop_after_attempt(5),
-    wait=wait_exponential(multiplier=1, min=2, max=10),
-    retry=retry_if_exception_type(Exception),
-    reraise=True,
-)
-async def send_message_with_retry(bot, chat_id: int, text: str):
-    await bot.send_message(chat_id=chat_id, text=text)
-    logger.info(f"Отправлено сообщение пользователю {chat_id}: {text}")
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка команды /start."""
     user_id = update.effective_user.id
     USER_CHAT_MAP[str(user_id)] = update.effective_chat.id
-    await send_message_with_retry(
-        context.bot, update.effective_chat.id, "Привет! Пришли мне XML-файл, и я передам его на обработку."
-    )
+    await update.message.reply_text("Привет! Пришли мне XML-файл, и я передам его на обработку.")
 
 
 async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Обработка входящих файлов.
+    Проверяем формат XML, авторизуем пользователя и сохраняем файл.
+    """
     user_id = update.effective_user.id
     chat_id = update.effective_chat.id
     USER_CHAT_MAP[str(user_id)] = chat_id
 
     if str(user_id) not in ALLOWED_USER_IDS:
-        await send_message_with_retry(
-            context.bot, chat_id, "У вас нет разрешения отправлять файлы этому боту."
-        )
+        logger.warning(f"Пользователь {user_id} не авторизован для отправки файлов.")
+        await update.message.reply_text("У вас нет разрешения отправлять файлы этому боту.")
         return
 
     document = update.message.document
     file_name = document.file_name
 
     if not file_name.lower().endswith(".xml"):
-        await send_message_with_retry(
-            context.bot, chat_id, "Кажется, это не XML-файл. Попробуй снова."
-        )
+        await update.message.reply_text("Кажется, это не XML-файл. Попробуй снова.")
         return
 
     file_id = document.file_id
@@ -78,87 +70,84 @@ async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.info(f"Файл сохранён: {file_path_local}")
     except Exception as e:
         logger.error(f"Ошибка при сохранении файла: {e}")
-        await send_message_with_retry(
-            context.bot, chat_id, "Произошла ошибка при сохранении файла."
-        )
+        await update.message.reply_text("Произошла ошибка при сохранении файла.")
         return
 
     try:
-        message = {"user_id": str(user_id), "file_path": file_path_local}
-        await context.bot_data["producer"].send_and_wait(
-            KAFKA_TOPIC, json.dumps(message).encode("utf-8")
+        producer = KafkaProducer(
+            bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
+            value_serializer=lambda v: json.dumps(v).encode("utf-8")
         )
-        logger.info(f"Сообщение отправлено в Kafka: {message}")
+        message = {"user_id": str(user_id), "file_path": file_path_local}
+        producer.send(KAFKA_TOPIC, message)
+        producer.flush()
+        logger.info(f"Сообщение отправлено в Kafka (топик={KAFKA_TOPIC}): {message}")
     except Exception as e:
         logger.error(f"Ошибка при отправке сообщения в Kafka: {e}")
-        await send_message_with_retry(
-            context.bot, chat_id, "Ошибка при уведомлении сервиса обработки файлов."
-        )
+        await update.message.reply_text("Ошибка при отправке файла в обработку.")
         return
 
-    await send_message_with_retry(
-        context.bot,
-        chat_id,
-        f"Файл '{file_name}' получен и сохранён как '{new_file_name}'. Отправлен на обработку.",
-    )
+    await update.message.reply_text(f"Файл '{file_name}' принят и отправлен на обработку.")
 
 
-async def consume_results_from_kafka(application):
-    consumer = AIOKafkaConsumer(
+def consume_results_from_kafka(application):
+    """
+    Kafka Consumer для получения результатов обработки файлов.
+    Работает в отдельном потоке.
+    """
+    consumer = KafkaConsumer(
         KAFKA_RESULT_TOPIC,
         bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
+        auto_offset_reset="earliest",
+        enable_auto_commit=True,
         group_id="bot_consumer_group",
-        value_deserializer=lambda x: x.decode("utf-8"),
+        value_deserializer=lambda x: json.loads(x.decode("utf-8"))
     )
+    logger.info(f"Kafka Consumer запущен для топика: {KAFKA_RESULT_TOPIC}")
 
-    await consumer.start()
-    logger.info(f"Kafka Consumer запущен, топик: {KAFKA_RESULT_TOPIC}")
-
-    try:
-        async for msg in consumer:
-            msg_str = msg.value
-            logger.info(f"Получено сообщение из Kafka: {msg_str}")
-
-            msg_json = json.loads(msg_str)
-            user_id = msg_json.get("user_id")
-            result = msg_json.get("result", [])
+    for msg in consumer:
+        try:
+            data = msg.value
+            user_id = data.get("user_id")
+            result = data.get("result", [])
             chat_id = USER_CHAT_MAP.get(str(user_id))
 
-            if not user_id or not chat_id:
-                logger.warning(f"Пропущено сообщение Kafka: user_id={user_id}, chat_id={chat_id}")
+            if not chat_id:
+                logger.warning(f"Не удалось найти chat_id для user_id={user_id}.")
                 continue
 
-            text_msg = "Результаты обработки:\n" + "\n".join(
-                [f"- {r.get('name')} (ISIN: {r.get('isin')}): {r.get('quantity')}" for r in result]
+            if not result:
+                text_msg = "Обработчик не вернул результатов. Возможно, файл пуст."
+            else:
+                text_msg = "Результаты обработки:\n" + "\n".join(
+                    [f"- {item.get('name')} (ISIN: {item.get('isin')}): {item.get('quantity')}" for item in result]
+                )
+
+            asyncio.run_coroutine_threadsafe(
+                application.bot.send_message(chat_id=chat_id, text=text_msg),
+                asyncio.get_event_loop()
             )
-            await send_message_with_retry(application.bot, chat_id, text_msg)
-    finally:
-        await consumer.stop()
-        logger.info("Kafka Consumer остановлен.")
+        except Exception as e:
+            logger.error(f"Ошибка при обработке сообщения из Kafka: {e}")
 
 
-async def main():
-    logger.info("Запуск Telegram-бота для приёма XML-файлов.")
-    application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+def main():
+    """Главная точка входа."""
+    logger.info("Запуск Telegram-бота.")
+
+    application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(MessageHandler(filters.Document.ALL, handle_file))
 
-    producer = AIOKafkaProducer(
-        bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
-        value_serializer=lambda v: json.dumps(v).encode("utf-8"),
+    kafka_thread = threading.Thread(
+        target=consume_results_from_kafka,
+        args=(application,),
+        daemon=True
     )
-    await producer.start()
-    application.bot_data["producer"] = producer
+    kafka_thread.start()
 
-    consumer_task = asyncio.create_task(consume_results_from_kafka(application))
-
-    try:
-        await application.run_polling()
-    finally:
-        consumer_task.cancel()
-        await consumer_task
-        await producer.stop()
+    application.run_polling()
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()

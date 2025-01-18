@@ -187,13 +187,8 @@ async def consume_results_from_kafka(application):
     finally:
         await consumer.stop()
 
-async def main():
-    """Главная точка входа в приложение (бот)."""
-    logger.info("Запуск Телеграм-бота для приёма XML-файлов...")
-
-    # Создаём приложение
-    application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
-
+async def startup(application: ContextTypes.DEFAULT_TYPE):
+    """Функция, вызываемая при запуске бота."""
     # Создаём Kafka Producer и добавляем его в bot_data
     producer = AIOKafkaProducer(
         bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
@@ -202,27 +197,56 @@ async def main():
     await producer.start()
     application.bot_data['producer'] = producer
 
-    # Регистрируем хендлеры
-    application.add_handler(CommandHandler("start", start_command))
-    application.add_handler(MessageHandler(filters.Document.ALL, handle_file))
-
     # Запускаем потребитель Kafka в фоновом задании
-    consumer_task = asyncio.create_task(consume_results_from_kafka(application))
-
+    application.bot_data['consumer_task'] = asyncio.create_task(consume_results_from_kafka(application))
     logger.info("Бот запущен. Ожидаю сообщений...")
 
-    try:
-        # Запускаем бота
-        await application.run_polling()
-    finally:
-        # Завершение работы
+async def shutdown(application: ContextTypes.DEFAULT_TYPE):
+    """Функция, вызываемая при остановке бота."""
+    # Останавливаем Kafka Producer
+    producer: AIOKafkaProducer = application.bot_data.get('producer')
+    if producer:
         await producer.stop()
+
+    # Останавливаем потребитель Kafka
+    consumer_task: asyncio.Task = application.bot_data.get('consumer_task')
+    if consumer_task:
         consumer_task.cancel()
         try:
             await consumer_task
         except asyncio.CancelledError:
             pass
-        await application.shutdown()
+
+    logger.info("Бот остановлен.")
+
+async def main():
+    """Главная точка входа в приложение (бот)."""
+    logger.info("Запуск Телеграм-бота для приёма XML-файлов...")
+
+    # Создаём приложение
+    application = (
+        ApplicationBuilder()
+        .token(TELEGRAM_BOT_TOKEN)
+        .concurrent_updates(False)  # Отключаем одновременные обновления
+        .build()
+    )
+
+    # Регистрируем хендлеры
+    application.add_handler(CommandHandler("start", start_command))
+    application.add_handler(MessageHandler(filters.Document.ALL, handle_file))
+
+    # Регистрация функций старта и остановки
+    application.job_queue.run_once(lambda context: asyncio.create_task(startup(application)), when=0)
+    application.add_error_handler(lambda update, context: logger.error(f"Ошибка: {context.error}"))
+
+    # Запускаем бота
+    await application.run_polling(stop_signals=None, timeout=60)
+
+    # При завершении работы, вызываем shutdown
+    await shutdown(application)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except (KeyboardInterrupt, SystemExit):
+        logger.info("Получен сигнал завершения. Останавливаю бота...")

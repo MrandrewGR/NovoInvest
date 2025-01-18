@@ -3,19 +3,17 @@
 import asyncio
 import logging
 from telethon import errors
-from telethon.tl.patched import Message
 from .utils import human_like_delay, get_delay_settings
 from .state_manager import StateManager
-from .process_messages import get_table_name
-from .utils import human_like_delay, get_delay_settings, serialize_message
+from .process_messages import get_table_name, serialize_message
 
 logger = logging.getLogger("backfill_manager")
 
 
 class BackfillManager:
     """
-    Отвечает за вычитку (backfill) более старых сообщений в тихие моменты,
-    чтобы не мешать обработке новых сообщений.
+    Responsible for backfilling older messages during idle periods
+    to avoid interfering with the processing of new messages.
     """
 
     def __init__(
@@ -23,7 +21,7 @@ class BackfillManager:
         client,
         state_mgr: StateManager,
         message_callback,
-        chat_id_to_data,  # Добавляем chat_id_to_data
+        chat_id_to_data,  # Added chat_id_to_data
         new_msgs_threshold: int = 5,
         idle_timeout: int = 10,
         batch_size: int = 50,
@@ -33,7 +31,7 @@ class BackfillManager:
         self.client = client
         self.state_mgr = state_mgr
         self.message_callback = message_callback
-        self.chat_id_to_data = chat_id_to_data  # Сохраняем chat_id_to_data
+        self.chat_id_to_data = chat_id_to_data  # Store chat_id_to_data
 
         self.new_msgs_threshold = new_msgs_threshold
         self.idle_timeout = idle_timeout
@@ -44,24 +42,24 @@ class BackfillManager:
         self._stop_event = asyncio.Event()
 
     def stop(self):
-        """Вызывается при завершении, чтобы остановить цикл бэкфилла."""
+        """Called on shutdown to stop the backfill loop."""
         self._stop_event.set()
 
     async def run(self):
-        logger.info("BackfillManager запущен.")
+        logger.info("BackfillManager started.")
         while not self._stop_event.is_set():
             await asyncio.sleep(self.idle_timeout)
 
             new_count = self.state_mgr.pop_new_messages_count(interval=self.idle_timeout)
-            logger.debug(f"[Backfill] За {self.idle_timeout}сек пришло {new_count} новых сообщений.")
+            logger.debug(f"[Backfill] {new_count} new messages received in the last {self.idle_timeout} seconds.")
 
             if new_count > self.new_msgs_threshold:
-                logger.debug("[Backfill] Поступает много новых сообщений, откладываем бэкфилл.")
+                logger.debug("[Backfill] High volume of new messages, delaying backfill.")
                 continue
 
             chats_to_backfill = self.state_mgr.get_chats_needing_backfill()
             if not chats_to_backfill:
-                logger.debug("[Backfill] Нет чатов, требующих бэкфилла.")
+                logger.debug("[Backfill] No chats require backfilling.")
                 continue
 
             for chat_id in chats_to_backfill:
@@ -69,20 +67,21 @@ class BackfillManager:
                     break
                 await self._do_chat_backfill(chat_id)
 
-        logger.info("BackfillManager остановлен.")
+        logger.info("BackfillManager stopped.")
 
     async def _do_chat_backfill(self, chat_id: int):
         backfill_from_id = self.state_mgr.get_backfill_from_id(chat_id)
         if backfill_from_id is None or backfill_from_id <= 1:
-            logger.debug(f"[Backfill] Чат {chat_id} уже полностью выгружен.")
+            logger.debug(f"[Backfill] Chat {chat_id} is fully backfilled.")
             return
 
-        # Получаем name_uname для формирования названия таблицы
-        name_uname = self.chat_id_to_data.get(chat_id, {}).get("name_or_username", "Unknown")
-        table_name = get_table_name(name_uname, chat_id)  # Используем name_uname
+        # Get name_uname for table naming
+        chat_info = self.chat_id_to_data.get(chat_id, {})
+        name_uname = chat_info.get("name_or_username", "Unknown")
+        table_name = get_table_name(name_uname, chat_id)  # Use name_uname
 
         logger.info(
-            f"[Backfill] Загружаем до {self.batch_size} старых сообщений для чата {chat_id}, offset_id={backfill_from_id}"
+            f"[Backfill] Loading up to {self.batch_size} older messages for chat {chat_id}, offset_id={backfill_from_id}"
         )
         try:
             messages = await self.client.get_messages(
@@ -92,7 +91,7 @@ class BackfillManager:
                 reverse=False
             )
             if not messages:
-                logger.info(f"[Backfill] В чате {chat_id} нет более старых сообщений.")
+                logger.info(f"[Backfill] No older messages found in chat {chat_id}.")
                 self.state_mgr.update_backfill_from_id(chat_id, 1)
                 return
 
@@ -108,27 +107,26 @@ class BackfillManager:
                 dmin, dmax = get_delay_settings("chat")
                 await human_like_delay(dmin, dmax)
 
-                # Используем функцию serialize_message вместо self._serialize_message
-                data = serialize_message(msg)
-                # Если необходимо добавить name_uname в данные
-                data['name_uname'] = name_uname
+                # Serialize the message using the centralized function
+                message_data = serialize_message(msg, event_type="backfill_message", chat_info=chat_info)
 
-                await self.message_callback(data)
+                # Send to Kafka via the callback
+                await self.message_callback(message_data)
 
                 if msg.id < backfill_from_id:
                     backfill_from_id = msg.id
 
             self.state_mgr.update_backfill_from_id(chat_id, backfill_from_id)
-            logger.info(f"[Backfill] Новый backfill_from_id для {chat_id} = {backfill_from_id}")
+            logger.info(f"[Backfill] Updated backfill_from_id for {chat_id} to {backfill_from_id}")
 
         except asyncio.CancelledError:
             raise
         except errors.FloodWaitError as e:
             wait_sec = min(e.seconds + self.flood_wait_delay, self.max_total_wait)
             logger.warning(
-                f"[Backfill] FloodWaitError: Telegram просит подождать {e.seconds}сек. "
-                f"Ждем {wait_sec}сек, чтобы не превышать лимиты."
+                f"[Backfill] FloodWaitError: Telegram requires waiting for {e.seconds} seconds. "
+                f"Waiting for {wait_sec} seconds to avoid rate limits."
             )
             await asyncio.sleep(wait_sec)
         except Exception as e:
-            logger.exception(f"[Backfill] Ошибка при бэкфилле чата {chat_id}: {e}")
+            logger.exception(f"[Backfill] Error during backfilling chat {chat_id}: {e}")

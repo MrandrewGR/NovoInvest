@@ -5,14 +5,15 @@ import json
 import logging
 from datetime import datetime
 from telethon.tl.types import Message, MessageEntityUrl, MessageEntityTextUrl
+from zoneinfo import ZoneInfo  # Импортируем ZoneInfo для работы с часовыми поясами
 
 logger = logging.getLogger("process_messages")
 
 
 def sanitize_table_name(name_uname):
     """
-    Cleans the username for use in table names.
-    Replaces non-alphanumeric characters with underscores and converts to lowercase.
+    Очищает имя пользователя для использования в названиях таблиц.
+    Заменяет неалфавитно-цифровые символы на подчеркивания и преобразует в нижний регистр.
     """
     if not isinstance(name_uname, str):
         name_uname = str(name_uname)
@@ -25,8 +26,8 @@ def sanitize_table_name(name_uname):
 
 def get_table_name(name_uname, target_id):
     """
-    Returns a sanitized table name based on name_uname or target_id.
-    Format: messages_{name_uname}
+    Возвращает очищенное имя таблицы на основе name_uname или target_id.
+    Формат: messages_{name_uname}
     """
     if name_uname and name_uname != "Unknown":
         sanitized = f"messages_{sanitize_table_name(name_uname)}"
@@ -40,12 +41,12 @@ def get_table_name(name_uname, target_id):
 
 def build_markdown_and_links(raw_text: str, entities: list):
     """
-    Converts raw text and entities into (markdown_text, links).
+    Преобразует сырой текст и сущности в (markdown_text, links).
 
-    Returns:
+    Возвращает:
       (text_markdown, links)
-      where text_markdown is a string with [text](link) in Markdown
-            links is a list of {offset, length, url, display_text}
+      где text_markdown — строка с [текст](ссылка) в Markdown
+            links — список {offset, length, url, display_text}
     """
     if not entities:
         return raw_text, []
@@ -95,15 +96,21 @@ def build_markdown_and_links(raw_text: str, entities: list):
 
 def serialize_message(msg: Message, event_type: str, chat_info: dict) -> dict:
     """
-    Serializes a Telethon Message into a JSON-serializable dictionary.
+    Сериализует сообщение Telethon в JSON-совместимый словарь.
 
     - event_type: "new_message", "edited_message", "backfill_message", ...
-    - chat_info: e.g. {"target_id":..., "chat_title":..., "name_uname":...}
+    - chat_info: например, {"target_id":..., "chat_title":..., "name_uname":...}
     """
     try:
-        logger.debug(f"[serialize_message] Serializing message_id={msg.id} from chat_id={msg.chat_id}")
+        logger.debug(f"[serialize_message] Сериализация message_id={msg.id} из chat_id={msg.chat_id}")
 
-        # Sender info
+        # Определяем московский часовой пояс
+        moscow_tz = ZoneInfo("Europe/Moscow")
+
+        # Преобразуем дату сообщения в московское время
+        msg_date_moscow = msg.date.astimezone(moscow_tz)
+
+        # Информация об отправителе
         sender_info = {}
         try:
             sender = msg.sender
@@ -115,9 +122,9 @@ def serialize_message(msg: Message, event_type: str, chat_info: dict) -> dict:
                     "sender_last_name": getattr(sender, "last_name", None),
                 }
         except Exception as e:
-            logger.error(f"[serialize_message] Failed to get sender info: {e}")
+            logger.error(f"[serialize_message] Не удалось получить информацию об отправителе: {e}")
 
-        # Reactions
+        # Информация о реакциях
         reactions_info = []
         if getattr(msg, "reactions", None) and msg.reactions.results:
             for r in msg.reactions.results:
@@ -125,7 +132,7 @@ def serialize_message(msg: Message, event_type: str, chat_info: dict) -> dict:
                 count = r.count
                 reactions_info.append({"emoji": emoticon, "count": count})
 
-        # Reply info
+        # Информация о реплае
         reply_info = {}
         if msg.is_reply:
             try:
@@ -135,48 +142,56 @@ def serialize_message(msg: Message, event_type: str, chat_info: dict) -> dict:
                     "reply_to_msg_id": reply_msg_id,
                 }
             except Exception as e:
-                logger.error(f"[serialize_message] Failed to get reply message: {e}")
+                logger.error(f"[serialize_message] Не удалось получить реплаем: {e}")
 
-        # Edit info
+        # Информация об изменении
         edited_info = {}
         if msg.edit_date:
-            edited_info["was_edited"] = True
-            edited_info["edit_date"] = msg.edit_date.isoformat()
+            try:
+                edit_date_moscow = msg.edit_date.astimezone(moscow_tz)
+                edited_info["was_edited"] = True
+                edited_info["edit_date"] = edit_date_moscow.isoformat()
+            except Exception as e:
+                logger.error(f"[serialize_message] Не удалось преобразовать дату редактирования: {e}")
 
-        # Forward info
+        # Информация о форварде
         forward_info = {"is_forwarded": False}
         if msg.forward:
             forward_info["is_forwarded"] = True
             forward_info["forwarded_from"] = str(msg.forward.from_name or "")
             forwarded_from_id = getattr(msg.forward.from_id, "user_id", None)
             forward_info["forwarded_from_id"] = forwarded_from_id
-            forward_info["forwarded_date"] = msg.forward.date.isoformat() if msg.forward.date else None
+            try:
+                forward_date_moscow = msg.forward.date.astimezone(moscow_tz) if msg.forward.date else None
+                forward_info["forwarded_date"] = forward_date_moscow.isoformat() if forward_date_moscow else None
+            except Exception as e:
+                logger.error(f"[serialize_message] Не удалось преобразовать дату форварда: {e}")
 
-        # Quotes
+        # Цитаты
         raw_text = msg.raw_text or ""
         quotes = [line.strip() for line in raw_text.splitlines() if line.strip().startswith(">")]
 
-        # Markdown + links
+        # Markdown и ссылки
         text_markdown, links = build_markdown_and_links(raw_text, msg.entities or [])
 
-        # Media path - actual downloading is handled elsewhere
+        # Путь к медиа - загрузка обрабатывается отдельно
         media_path = None
         if msg.media:
             try:
                 media_path = msg.media.to_dict().get('file', None)
             except Exception as e:
-                logger.error(f"[serialize_message] Failed to process media: {e}")
+                logger.error(f"[serialize_message] Не удалось обработать медиа: {e}")
 
         target_id = chat_info.get("target_id", "unknown")
         chat_title = chat_info.get("chat_title", "Untitled")
         name_uname = chat_info.get("name_uname", "Unknown")
 
-        month_part = msg.date.strftime("%Y-%m")
+        month_part = msg_date_moscow.strftime("%Y-%m")
 
         message_data = {
             "event_type": event_type,
             "message_id": msg.id,
-            "date": msg.date.isoformat(),
+            "date": msg_date_moscow.isoformat(),  # Используем московское время
             "text_plain": raw_text,
             "text_markdown": text_markdown,
             "links": links,
@@ -194,9 +209,9 @@ def serialize_message(msg: Message, event_type: str, chat_info: dict) -> dict:
             "month_part": month_part,
         }
 
-        logger.debug(f"[serialize_message] Serialized: {json.dumps(message_data, ensure_ascii=False)}")
+        logger.debug(f"[serialize_message] Сериализовано: {json.dumps(message_data, ensure_ascii=False)}")
         return message_data
 
     except Exception as e:
-        logger.exception(f"[serialize_message] Error serializing message_id={msg.id}: {e}")
+        logger.exception(f"[serialize_message] Ошибка при сериализации message_id={msg.id}: {e}")
         return {}

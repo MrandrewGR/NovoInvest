@@ -2,14 +2,16 @@
 
 """
 Конфигурация tg_ubot,
-наследуемся от BaseConfig вашей библиотеки для Kafka/DB параллельно.
+наследуемся от BaseConfig вашей библиотеки для Kafka/DB и т.д.
 """
 
 import os
 from pydantic import BaseSettings
 from typing import Optional, List
 
+# Импортируем BaseConfig из установленной библиотеки mirco_services_data_management
 from mirco_services_data_management.config import BaseConfig
+
 
 class TGUBotSettings(BaseSettings, BaseConfig):
     """

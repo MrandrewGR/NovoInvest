@@ -1,3 +1,5 @@
+# Dockerfile для сервиса tg_ubot
+
 FROM python:3.11-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -9,14 +11,13 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 WORKDIR /app
 
-# Копируем ВСЁ (включая ./utils/libs/mirco_services_data_management),
-# чтобы можно было установить библиотеку локально
+# Копируем весь проект в контейнер
 COPY . /app
 
-# Сначала устанавливаем библиотеку из локальной папки
-RUN pip install --no-cache-dir ./utils/libs/mirco_services_data_management
+# Устанавливаем библиотеку mirco_services_data_management из GitHub
+RUN pip install --no-cache-dir git+https://github.com/MrandrewGR/mirco_services_data_management.git
 
-# Затем основные зависимости для tg_ubot
+# Затем устанавливаем остальные зависимости
 RUN pip install --no-cache-dir -r services/tg_ubot/requirements.txt
 
 # Создаем нужные директории

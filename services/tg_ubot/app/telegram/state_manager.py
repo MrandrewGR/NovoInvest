@@ -13,12 +13,13 @@ import logging
 
 logger = logging.getLogger("state_manager")
 
+
 class StateManager:
     """
     Позволяет:
      - update_backfill_from_id(chat_id, val)
      - get_backfill_from_id(chat_id)
-     - record_new_message() => регистрируем новое/редактированное сообщение
+     - record_new_message() => регистрируем новое/отредактированное сообщение
      - pop_new_messages_count(interval) => сколько сообщений было за последние 'interval' секунд
     """
 
@@ -79,8 +80,7 @@ class StateManager:
 
     def record_new_message(self):
         """
-        Вызывается при каждом новом/отредактированном сообщении:
-        сохраняем таймштамп.
+        Вызывается при каждом новом/отредактированном сообщении: сохраняем таймштамп.
         """
         now = asyncio.get_event_loop().time()
         self.new_msg_timestamps.append(now)

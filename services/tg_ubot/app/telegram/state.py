@@ -8,6 +8,7 @@ from telethon import TelegramClient
 
 logger = logging.getLogger("state")
 
+
 class MessageCounter:
     """
     Простой счётчик обработанных сообщений,

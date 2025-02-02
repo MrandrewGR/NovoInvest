@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo
 
 logger = logging.getLogger("process_messages")
 
+
 def build_markdown_and_links(raw_text: str, entities: list):
     """
     Преобразуем Text + Telethon entities => (Markdown, Links[]).
@@ -43,7 +44,6 @@ def build_markdown_and_links(raw_text: str, entities: list):
             })
             last_offset = entity.offset + e_length
         else:
-            # Пропускаем, либо можно доп.логики
             md_fragments.append(display_text)
             last_offset = entity.offset + e_length
 

@@ -6,6 +6,7 @@ import uuid
 
 logger = logging.getLogger("gaps_manager")
 
+
 class GapsManager:
     """
     Отвечает за логику gap_scan_request/response через Kafka,
@@ -55,7 +56,6 @@ class GapsManager:
         fut = loop.create_future()
         self.pending_tasks[correlation_id] = {"chat_id": chat_id, "future": fut}
 
-        # Ждём ответ не более 30 сек
         try:
             response = await asyncio.wait_for(fut, timeout=30.0)
         except asyncio.TimeoutError:
@@ -63,7 +63,6 @@ class GapsManager:
             del self.pending_tasks[correlation_id]
             return
 
-        # Обрабатываем ответ
         response_type = response.get("type")
         if response_type == "gap_scan_response":
             earliest_in_db = response.get("earliest_in_db")
@@ -71,12 +70,10 @@ class GapsManager:
             logger.info(f"[GapsManager] chat_id={chat_id}, earliest_in_db={earliest_in_db}, missing={missing_ranges}")
 
             earliest_in_tg = await self._get_earliest_in_telegram(chat_id)
-            # Если в БД самое раннее сообщение 'earliest_in_db' гораздо позже, чем самое раннее в TG
             if earliest_in_db and earliest_in_tg and earliest_in_db > (earliest_in_tg + 1):
                 self.state_mgr.update_backfill_from_id(chat_id, earliest_in_db)
                 logger.info(f"[GapsManager] Set backfill_from_id={earliest_in_db}")
 
-            # Сдвигаем backfill_from_id, чтобы пропустить "дырявые" диапазоны
             for (start, end) in missing_ranges:
                 bf_from = end + 1
                 self.state_mgr.update_backfill_from_id(chat_id, bf_from)

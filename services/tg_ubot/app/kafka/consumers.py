@@ -11,6 +11,7 @@ from app.config import settings
 
 logger = logging.getLogger("kafka_consumers")
 
+
 class AIOKafkaMessageConsumer:
     """
     Асинхронный Consumer (aiokafka) — например, для gap_scan_response.
@@ -76,7 +77,7 @@ class TGInstructionsConsumer:
 
     async def initialize(self):
         loop = asyncio.get_running_loop()
-        # Создаём синхронный KafkaConsumer в отдельном потоке
+
         def create_consumer():
             return KafkaConsumer(
                 "tg_instructions",
@@ -95,7 +96,6 @@ class TGInstructionsConsumer:
         """
         while True:
             try:
-                # Операция next(...) блокирующая => run_in_executor
                 def get_next():
                     return next(iter(self.consumer))
 

@@ -144,16 +144,16 @@ jobs:
             done
             ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose up -d --build --remove-orphans --force-recreate $SERVICES"
           fi
-      # Шаг 20
-      - name: Recreate PostgreSQL volume if DB changed
-        run: |
-          if echo "${{ env.CHANGED_SERVICES }}" | grep -q "db"; then
-            echo "Изменения в сервисе db. Перезапускаем контейнер и пересоздаём volume."
-            ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose stop db && docker compose rm -f db"
-            ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose up -d db"
-          else
-            echo "Сервис db не изменялся. Пропускаем пересоздание volume."
-          fi
+#      # Шаг 20
+#      - name: Recreate PostgreSQL volume if DB changed
+#        run: |
+#          if echo "${{ env.CHANGED_SERVICES }}" | grep -q "db"; then
+#            echo "Изменения в сервисе db. Перезапускаем контейнер и пересоздаём volume."
+#            ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose stop db && docker compose rm -f db"
+#            ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose up -d db"
+#          else
+#            echo "Сервис db не изменялся. Пропускаем пересоздание volume."
+#          fi
 
       - name: Check Docker Compose Status
         run: ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app && docker compose ps"

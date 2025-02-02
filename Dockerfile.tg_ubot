@@ -1,0 +1,29 @@
+FROM python:3.11-slim
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# 1) Установим tzdata без интерактивного выбора
+RUN apt-get update && apt-get install -y --no-install-recommends tzdata && rm -rf /var/lib/apt/lists/*
+ENV TZ=Europe/Moscow
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
+WORKDIR /app
+
+# 2) Скопируем весь проект (т.к. в docker-compose.yml context = .)
+COPY . /app
+
+# 3) Ставим локальную библиотеку из /utils/libs/
+RUN pip install --no-cache-dir ./utils/libs/mirco_services_data_management
+
+# 4) Ставим зависимости tg_ubot
+RUN pip install --no-cache-dir -r services/tg_ubot/requirements.txt
+
+# 5) Создаем служебные директории
+RUN mkdir -p /app/logs /app/data /app/media
+
+# 6) Сделаем wait-for-it.sh исполняемым и скопируем в /usr/local/bin (для удобства)
+RUN chmod +x /app/services/tg_ubot/wait-for-it.sh && \
+    cp /app/services/tg_ubot/wait-for-it.sh /usr/local/bin/wait-for-it.sh
+
+# 7) Запуск: ждем Kafka:9092, после чего запускаем main
+CMD ["wait-for-it.sh", "kafka:9092", "--", "python", "-m", "services.tg_ubot.app.main"]

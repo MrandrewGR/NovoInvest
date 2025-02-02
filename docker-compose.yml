@@ -54,7 +54,8 @@ services:
   tg_ubot:
     container_name: tg_ubot
     build:
-      context: ./services/tg_ubot
+      context: .
+      dockerfile: Dockerfile.tg_ubot
     env_file:
       - /home/dev/app/env/tg_ubot.env
     environment:

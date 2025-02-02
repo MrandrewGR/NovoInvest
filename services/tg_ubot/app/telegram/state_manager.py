@@ -1,4 +1,10 @@
-# services/tg_ubot/app/state_manager.py
+# services/tg_ubot/app/telegram/state_manager.py
+
+"""
+StateManager хранит:
+ - backfill_from_id для каждого чата
+ - временные метки последних сообщений (для принятия решения о backfill)
+"""
 
 import os
 import json
@@ -7,13 +13,13 @@ import logging
 
 logger = logging.getLogger("state_manager")
 
-
 class StateManager:
     """
-    Stores:
-    - backfill_from_id for each chat
-    - a rolling list of timestamps for new or edited messages (pop_new_messages_count)
-    All data is in /app/data/state.json (mounted as a volume).
+    Позволяет:
+     - update_backfill_from_id(chat_id, val)
+     - get_backfill_from_id(chat_id)
+     - record_new_message() => регистрируем новое/редактированное сообщение
+     - pop_new_messages_count(interval) => сколько сообщений было за последние 'interval' секунд
     """
 
     def __init__(self, state_file="/app/data/state.json"):
@@ -33,7 +39,7 @@ class StateManager:
                 logger.exception(f"[StateManager] Could not load {self.state_file}: {e}")
                 return {}
         else:
-            logger.warning(f"[StateManager] File {self.state_file} not found, creating empty state.")
+            logger.warning(f"[StateManager] {self.state_file} not found, creating empty state.")
             return {}
 
     def _save_state(self):
@@ -42,11 +48,11 @@ class StateManager:
             with open(tmp_file, "w", encoding="utf-8") as f:
                 json.dump(self.state, f, ensure_ascii=False, indent=2)
             os.replace(tmp_file, self.state_file)
-            logger.debug(f"[StateManager] State saved to {self.state_file}")
+            logger.debug(f"[StateManager] Saved state to {self.state_file}")
         except Exception as e:
             logger.exception(f"[StateManager] Error saving state: {e}")
 
-    def get_backfill_from_id(self, chat_id: int) -> int:
+    def get_backfill_from_id(self, chat_id: int):
         key = f"chat_{chat_id}_backfill_from_id"
         return self.state.get(key, None)
 
@@ -55,34 +61,34 @@ class StateManager:
         self.state[key] = new_val
         self._save_state()
 
-    def get_chats_needing_backfill(self) -> list[int]:
+    def get_chats_needing_backfill(self):
         """
-        Return all chat_ids where backfill_from_id > 1
+        Возвращает все chat_id, у которых backfill_from_id>1
         """
         result = []
         for k, v in self.state.items():
             if k.endswith("_backfill_from_id"):
                 if isinstance(v, int) and v > 1:
                     try:
-                        chat_id_str = k.replace("chat_", "").replace("_backfill_from_id", "")
-                        cid = int(chat_id_str)
+                        chat_str = k.replace("chat_", "").replace("_backfill_from_id", "")
+                        cid = int(chat_str)
                         result.append(cid)
                     except ValueError:
-                        logger.warning(f"[StateManager] Invalid chat_id in key: {k}")
+                        logger.warning(f"[StateManager] Invalid chat id in key: {k}")
         return result
 
     def record_new_message(self):
         """
-        Called whenever a new or edited message arrives.
-        We'll store a timestamp for rate checks.
+        Вызывается при каждом новом/отредактированном сообщении:
+        сохраняем таймштамп.
         """
         now = asyncio.get_event_loop().time()
         self.new_msg_timestamps.append(now)
 
     def pop_new_messages_count(self, interval: float) -> int:
         """
-        Returns how many messages arrived in the last `interval` seconds,
-        and removes timestamps older than `interval`.
+        Смотрим, сколько сообщений было за последние interval секунд,
+        удаляем старые таймштампы.
         """
         now = asyncio.get_event_loop().time()
         cutoff = now - interval

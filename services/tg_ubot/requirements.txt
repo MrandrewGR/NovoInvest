@@ -1,8 +1,7 @@
-# File location: services/tg_ubot/requirements.txt
+# services/tg_ubot/requirements.txt
 
 telethon==1.31.0
 kafka-python==2.0.2
 python-dotenv==1.0.0
 pydantic==1.10.2
-asyncio==3.4.3
 aiokafka==0.12.0

@@ -1,4 +1,3 @@
-
 services:
   zookeeper:
     image: confluentinc/cp-zookeeper:7.4.0
@@ -47,6 +46,7 @@ services:
       POSTGRES_DB: tg_ubot
     volumes:
       - pgdata:/var/lib/postgresql/data
+      # Если нужно, можно сохранять SQL-скрипты в init-db:
       - ./services/db/init-db:/docker-entrypoint-initdb.d
     networks:
       - app_network
@@ -67,27 +67,7 @@ services:
       - app_network
     volumes:
       - /home/dev/app/session_name.session:/app/session_name.session
-      # Для хранения state (если нужно)
-      - tg_ubot_state_volume:/app/data
-
-  db:
-    container_name: db
-    build:
-      context: ./services/db
-    env_file:
-      - ./env/.env
-    environment:
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_USER: postgres
-      DB_PASSWORD: postgres
-      DB_NAME: tg_ubot
-    depends_on:
-      - kafka
-      - postgres
-    restart: unless-stopped
-    networks:
-      - app_network
+      - tg_ubot_state_volume:/app/data  # для хранения state, если нужно
 
   bot:
     container_name: bot

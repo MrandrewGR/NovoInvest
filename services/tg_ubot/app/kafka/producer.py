@@ -1,33 +1,42 @@
-# services/tg_ubot/app/kafka_producer.py
+# services/tg_ubot/app/kafka/producer.py
 
 import json
 import logging
 from aiokafka import AIOKafkaProducer
 from aiokafka.errors import KafkaError
-from .config import settings
+from app.config import settings
 
 logger = logging.getLogger("kafka_producer")
 
-
 class KafkaMessageProducer:
+    """
+    Асинхронный KafkaProducer (aiokafka).
+    """
+
     def __init__(self):
-        self.logger = logging.getLogger("kafka_producer")
+        self.logger = logger
         self.producer = None
 
     async def initialize(self):
+        """
+        Создаёт AIOKafkaProducer, подключается к брокеру.
+        """
         try:
             self.producer = AIOKafkaProducer(
-                bootstrap_servers=settings.KAFKA_BOOTSTRAP_SERVERS,
+                bootstrap_servers=settings.KAFKA_BROKER,
                 value_serializer=lambda v: json.dumps(v).encode('utf-8')
             )
             await self.producer.start()
-            self.logger.info("AIOKafkaProducer created and connected to broker.")
+            self.logger.info("AIOKafkaProducer created and connected.")
         except Exception as e:
             self.logger.error(f"Error creating AIOKafkaProducer: {e}")
             raise
 
-    async def send_message(self, topic, message):
-        if self.producer is None:
+    async def send_message(self, topic: str, message: dict):
+        """
+        Отправляет message в указанный topic (JSON).
+        """
+        if not self.producer:
             raise Exception("Kafka producer not initialized.")
         try:
             await self.producer.send_and_wait(topic, message)

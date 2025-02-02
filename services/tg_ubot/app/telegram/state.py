@@ -1,18 +1,17 @@
-# File location: services/tg_ubot/app/state.py
+# services/tg_ubot/app/telegram/state.py
 
 import asyncio
 import logging
-from telethon import TelegramClient
 import json
 import os
+from telethon import TelegramClient
 
 logger = logging.getLogger("state")
 
 class MessageCounter:
     """
-    Simple counter that increments whenever a message is processed.
-    Sends a Telegram notification every `threshold` messages.
-    Persists its count in a local state file between runs.
+    Простой счётчик обработанных сообщений,
+    отправляет уведомление каждые threshold штук в 'Saved Messages'.
     """
 
     def __init__(self, client: TelegramClient, threshold: int = 100):
@@ -20,10 +19,9 @@ class MessageCounter:
         self.threshold = threshold
         self.count = 0
         self.lock = asyncio.Lock()
-        self.state_file = "/app/state.json"
+        self.state_file = "/app/data/state.json"
         self.state = self.load_state()
 
-        # If we previously had a message_count stored, restore it
         if "message_count" in self.state:
             self.count = self.state["message_count"]
 
@@ -31,9 +29,9 @@ class MessageCounter:
         if os.path.exists(self.state_file):
             try:
                 with open(self.state_file, 'r', encoding='utf-8') as f:
-                    state = json.load(f)
-                logger.debug("MessageCounter state loaded successfully.")
-                return state
+                    s = json.load(f)
+                logger.debug("MessageCounter state loaded.")
+                return s
             except Exception as e:
                 logger.exception(f"Failed to load MessageCounter state: {e}")
         return {}
@@ -43,14 +41,17 @@ class MessageCounter:
             self.state["message_count"] = self.count
             with open(self.state_file, 'w', encoding='utf-8') as f:
                 json.dump(self.state, f)
-            logger.debug("MessageCounter state saved successfully.")
+            logger.debug("MessageCounter state saved.")
         except Exception as e:
             logger.exception(f"Failed to save MessageCounter state: {e}")
 
     async def increment(self):
+        """
+        Увеличиваем счётчик, сохраняем state, при threshold — уведомляем в Telegram.
+        """
         async with self.lock:
             self.count += 1
-            logger.debug(f"Processed messages count: {self.count}")
+            logger.debug(f"Processed messages: {self.count}")
             self.save_state()
 
             if self.count % self.threshold == 0:
@@ -58,12 +59,12 @@ class MessageCounter:
 
     async def notify(self):
         """
-        Every time the threshold is reached, send a note to 'Saved Messages'.
+        Шлёт служебное сообщение себе (Saved Messages).
         """
         try:
-            saved_messages = await self.client.get_entity("me")
-            notification = f"Processed {self.count} messages so far."
-            await self.client.send_message(saved_messages, notification)
-            logger.info(f"Notification sent for {self.count} processed messages.")
+            saved = await self.client.get_entity("me")
+            text = f"Processed {self.count} messages so far."
+            await self.client.send_message(saved, text)
+            logger.info(f"Notification sent for {self.count} messages.")
         except Exception as e:
-            logger.exception(f"Failed to send notification for {self.count} messages: {e}")
+            logger.exception(f"Failed to notify for {self.count} messages: {e}")

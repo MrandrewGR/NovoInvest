@@ -10,24 +10,22 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
 
+    # Здесь указываем все однострочные секреты/переменные.
+    # GitHub Actions замаскирует их в логах.
+    env:
+      SSH_HOST: ${{ secrets.SSH_HOST }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+      TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+      TELEGRAM_PHONE: ${{ secrets.TELEGRAM_PHONE }}
+      TELEGRAM_TARGET_IDS: ${{ secrets.TELEGRAM_TARGET_IDS }}
+      SESSION_FILE_BASE64: ${{ secrets.SESSION_FILE_BASE64 }}
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
-
-      - name: Export environment variables
-        # Этот шаг пробрасывает секреты в переменные окружения
-        # через $GITHUB_ENV, чтобы они не печатались в логах как `env:`
-        run: |
-          echo "SSH_HOST=${{ secrets.SSH_HOST }}" >> $GITHUB_ENV
-          echo "SSH_PRIVATE_KEY=${{ secrets.SSH_PRIVATE_KEY }}" >> $GITHUB_ENV
-          echo "TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}" >> $GITHUB_ENV
-          echo "TELEGRAM_API_ID=${{ secrets.TELEGRAM_API_ID }}" >> $GITHUB_ENV
-          echo "TELEGRAM_API_HASH=${{ secrets.TELEGRAM_API_HASH }}" >> $GITHUB_ENV
-          echo "TELEGRAM_PHONE=${{ secrets.TELEGRAM_PHONE }}" >> $GITHUB_ENV
-          echo "TELEGRAM_TARGET_IDS=${{ secrets.TELEGRAM_TARGET_IDS }}" >> $GITHUB_ENV
-          echo "SESSION_FILE_BASE64=${{ secrets.SESSION_FILE_BASE64 }}" >> $GITHUB_ENV
 
       - name: Set up Git
         run: git fetch origin main
@@ -77,20 +75,21 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y rsync jq
 
+      # Ключ SSH (многострочный) передаем напрямую в экшен, без echo
       - name: Set up SSH Agent
         uses: webfactory/ssh-agent@v0.5.3
         with:
-          ssh-private-key: ${{ env.SSH_PRIVATE_KEY }}
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
       - name: Add known hosts
-        run: ssh-keyscan -H ${{ env.SSH_HOST }} >> ~/.ssh/known_hosts
+        run: ssh-keyscan -H $SSH_HOST >> ~/.ssh/known_hosts
 
       - name: Test SSH Connection
-        run: ssh dev@${{ env.SSH_HOST }} 'echo "SSH connection established"'
+        run: ssh dev@$SSH_HOST 'echo "SSH connection established"'
 
       - name: Install Docker and Docker Compose on server
         run: |
-          ssh dev@${{ env.SSH_HOST }} "if ! command -v docker &> /dev/null; then
+          ssh dev@$SSH_HOST "if ! command -v docker &> /dev/null; then
             sudo apt-get update &&
             sudo apt-get install -y ca-certificates curl gnupg lsb-release &&
             sudo mkdir -p /etc/apt/keyrings &&
@@ -105,19 +104,19 @@ jobs:
           docker compose version"
 
       - name: Add user to Docker group
-        run: ssh dev@${{ env.SSH_HOST }} "sudo usermod -aG docker dev"
+        run: ssh dev@$SSH_HOST "sudo usermod -aG docker dev"
 
       - name: Reload SSH session to apply Docker group membership
         run: |
-          ssh dev@${{ env.SSH_HOST }} "newgrp docker && echo 'Docker group membership applied.'"
+          ssh dev@$SSH_HOST "newgrp docker && echo 'Docker group membership applied.'"
 
       - name: Verify Docker installation
         run: |
-          ssh dev@${{ env.SSH_HOST }} "docker --version"
-          ssh dev@${{ env.SSH_HOST }} "docker compose version"
+          ssh dev@$SSH_HOST "docker --version"
+          ssh dev@$SSH_HOST "docker compose version"
 
       - name: Check Docker access for dev user
-        run: ssh dev@${{ env.SSH_HOST }} "docker ps || echo 'No containers running'"
+        run: ssh dev@$SSH_HOST "docker ps || echo 'No containers running'"
 
       - name: Rsync code to server
         run: |
@@ -137,29 +136,29 @@ jobs:
 
           # Если полный деплой или изменён docker-compose.yml — копируем весь проект и поднимаем всё
           if [ "${{ env.FULL_DEPLOY }}" == "true" ] || [ "${{ env.DOCKER_COMPOSE_CHANGED }}" == "true" ]; then
-            rsync -avz --exclude '.git' --exclude '.github' . dev@${{ env.SSH_HOST }}:/home/dev/app/
-            ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app && docker compose up -d --build --force-recreate"
+            rsync -avz --exclude '.git' --exclude '.github' . dev@$SSH_HOST:/home/dev/app/
+            ssh dev@$SSH_HOST "cd /home/dev/app && docker compose up -d --build --force-recreate"
           else
             # Иначе копируем только изменённые сервисы
             for service in $SERVICES; do
               echo "Deploying service: $service"
-              rsync -avz --exclude '.git' --exclude '.github' services/$service/ dev@${{ env.SSH_HOST }}:/home/dev/app/services/$service/
+              rsync -avz --exclude '.git' --exclude '.github' services/$service/ dev@$SSH_HOST:/home/dev/app/services/$service/
             done
-            ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app && docker compose up -d --build --remove-orphans --force-recreate $SERVICES"
+            ssh dev@$SSH_HOST "cd /home/dev/app && docker compose up -d --build --remove-orphans --force-recreate $SERVICES"
           fi
 
       # - name: Recreate PostgreSQL volume if DB changed
       #   run: |
       #     if echo "${{ env.CHANGED_SERVICES }}" | grep -q "db"; then
       #       echo "Изменения в сервисе db. Перезапускаем контейнер и пересоздаём volume."
-      #       ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app && docker compose stop db && docker compose rm -f db"
-      #       ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app && docker compose up -d db"
+      #       ssh dev@$SSH_HOST "cd /home/dev/app && docker compose stop db && docker compose rm -f db"
+      #       ssh dev@$SSH_HOST "cd /home/dev/app && docker compose up -d db"
       #     else
       #       echo "Сервис db не изменялся. Пропускаем пересоздание volume."
       #     fi
 
       - name: Check Docker Compose Status
-        run: ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app && docker compose ps"
+        run: ssh dev@$SSH_HOST "cd /home/dev/app && docker compose ps"
 
       - name: View Logs for Deployed Services
         run: |
@@ -173,13 +172,13 @@ jobs:
 
           for service in $SERVICES; do
             echo "Logs for service: $service"
-            ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app && docker compose logs $service --tail 50"
+            ssh dev@$SSH_HOST "cd /home/dev/app && docker compose logs $service --tail 50"
           done
 
       - name: Wait for Kafka to be healthy
         run: |
           for i in {1..24}; do
-            status=$(ssh dev@${{ env.SSH_HOST }} "docker inspect --format='{{.State.Health.Status}}' kafka 2>/dev/null")
+            status=$(ssh dev@$SSH_HOST "docker inspect --format='{{.State.Health.Status}}' kafka 2>/dev/null")
             if [ "$status" = "healthy" ]; then
               echo "Kafka is healthy now"
               break
@@ -194,8 +193,8 @@ jobs:
 
       - name: Check Kafka Health
         run: |
-          ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app && docker compose exec kafka kafka-broker-api-versions --bootstrap-server localhost:9092"
+          ssh dev@$SSH_HOST "cd /home/dev/app && docker compose exec kafka kafka-broker-api-versions --bootstrap-server localhost:9092"
           echo "Kafka is responding"
 
       - name: Remove unused Docker volumes
-        run: ssh dev@${{ env.SSH_HOST }} "docker volume prune -f"
+        run: ssh dev@$SSH_HOST "docker volume prune -f"

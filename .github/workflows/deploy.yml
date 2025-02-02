@@ -1,4 +1,4 @@
-# ./github/workflows/deploy.yml
+# .github/workflows/deploy.yml
 name: Deploy to Hetzner
 
 on:
@@ -10,21 +10,24 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
 
-    env:
-      SSH_HOST: ${{ secrets.SSH_HOST }}
-      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-      TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
-      TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
-      TELEGRAM_PHONE: ${{ secrets.TELEGRAM_PHONE }}
-      TELEGRAM_TARGET_IDS: ${{ secrets.TELEGRAM_TARGET_IDS }}
-      SESSION_FILE_BASE64: ${{ secrets.SESSION_FILE_BASE64 }}
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
+
+      - name: Export environment variables
+        # Этот шаг пробрасывает секреты в переменные окружения
+        # через $GITHUB_ENV, чтобы они не печатались в логах как `env:`
+        run: |
+          echo "SSH_HOST=${{ secrets.SSH_HOST }}" >> $GITHUB_ENV
+          echo "SSH_PRIVATE_KEY=${{ secrets.SSH_PRIVATE_KEY }}" >> $GITHUB_ENV
+          echo "TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}" >> $GITHUB_ENV
+          echo "TELEGRAM_API_ID=${{ secrets.TELEGRAM_API_ID }}" >> $GITHUB_ENV
+          echo "TELEGRAM_API_HASH=${{ secrets.TELEGRAM_API_HASH }}" >> $GITHUB_ENV
+          echo "TELEGRAM_PHONE=${{ secrets.TELEGRAM_PHONE }}" >> $GITHUB_ENV
+          echo "TELEGRAM_TARGET_IDS=${{ secrets.TELEGRAM_TARGET_IDS }}" >> $GITHUB_ENV
+          echo "SESSION_FILE_BASE64=${{ secrets.SESSION_FILE_BASE64 }}" >> $GITHUB_ENV
 
       - name: Set up Git
         run: git fetch origin main
@@ -134,26 +137,26 @@ jobs:
 
           # Если полный деплой или изменён docker-compose.yml — копируем весь проект и поднимаем всё
           if [ "${{ env.FULL_DEPLOY }}" == "true" ] || [ "${{ env.DOCKER_COMPOSE_CHANGED }}" == "true" ]; then
-            rsync -avz --exclude '.git' --exclude '.github' . dev@${{ secrets.SSH_HOST }}:/home/dev/app/
-            ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose up -d --build --force-recreate"
+            rsync -avz --exclude '.git' --exclude '.github' . dev@${{ env.SSH_HOST }}:/home/dev/app/
+            ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app && docker compose up -d --build --force-recreate"
           else
             # Иначе копируем только изменённые сервисы
             for service in $SERVICES; do
               echo "Deploying service: $service"
-              rsync -avz --exclude '.git' --exclude '.github' services/$service/ dev@${{ secrets.SSH_HOST }}:/home/dev/app/services/$service/
+              rsync -avz --exclude '.git' --exclude '.github' services/$service/ dev@${{ env.SSH_HOST }}:/home/dev/app/services/$service/
             done
-            ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose up -d --build --remove-orphans --force-recreate $SERVICES"
+            ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app && docker compose up -d --build --remove-orphans --force-recreate $SERVICES"
           fi
-#      # Шаг 20
-#      - name: Recreate PostgreSQL volume if DB changed
-#        run: |
-#          if echo "${{ env.CHANGED_SERVICES }}" | grep -q "db"; then
-#            echo "Изменения в сервисе db. Перезапускаем контейнер и пересоздаём volume."
-#            ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose stop db && docker compose rm -f db"
-#            ssh dev@${{ secrets.SSH_HOST }} "cd /home/dev/app && docker compose up -d db"
-#          else
-#            echo "Сервис db не изменялся. Пропускаем пересоздание volume."
-#          fi
+
+      # - name: Recreate PostgreSQL volume if DB changed
+      #   run: |
+      #     if echo "${{ env.CHANGED_SERVICES }}" | grep -q "db"; then
+      #       echo "Изменения в сервисе db. Перезапускаем контейнер и пересоздаём volume."
+      #       ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app && docker compose stop db && docker compose rm -f db"
+      #       ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app && docker compose up -d db"
+      #     else
+      #       echo "Сервис db не изменялся. Пропускаем пересоздание volume."
+      #     fi
 
       - name: Check Docker Compose Status
         run: ssh dev@${{ env.SSH_HOST }} "cd /home/dev/app && docker compose ps"
@@ -162,7 +165,8 @@ jobs:
         run: |
           # Если полный деплой или изменён docker-compose — смотрим логи всех
           if [ "${{ env.FULL_DEPLOY }}" == "true" ] || [ "${{ env.DOCKER_COMPOSE_CHANGED }}" == "true" ]; then
-            SERVICES=$(ls -d services/*/ | xargs -n 1 basename | paste -sd "," - | tr ',' ' ')
+            # берём все сервисы, НО исключаем db
+            SERVICES=$(ls -d services/*/ | xargs -n 1 basename | grep -v '^db$' | paste -sd "," - | tr ',' ' ')
           else
             SERVICES=$(echo "$CHANGED_SERVICES" | tr ',' ' ')
           fi

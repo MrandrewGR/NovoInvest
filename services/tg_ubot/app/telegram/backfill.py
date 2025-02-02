@@ -10,6 +10,7 @@ from app.process_messages import serialize_message
 
 logger = logging.getLogger("backfill_manager")
 
+
 class BackfillManager:
     """
     Отвечает за дозагрузку старых сообщений (backfill),

@@ -12,6 +12,7 @@ from app.process_messages import serialize_message
 
 logger = logging.getLogger("unified_handler")
 
+
 def register_unified_handler(
     client,
     message_buffer: asyncio.Queue,
@@ -58,16 +59,13 @@ async def process_message_event(event, event_type, message_buffer, chat_id_to_da
             logger.warning(f"No chat_info for chat_id={msg.chat_id}, skipping.")
             return
 
-        # Имитация user delay
         dmin, dmax = get_delay_settings("chat")
         await human_like_delay(dmin, dmax)
 
-        # Сериализация
         data = serialize_message(msg, event_type, chat_info)
         if not data:
             return
 
-        # Кладём в очередь, дальше producer_task отправит в Kafka
         topic = settings.KAFKA_PRODUCE_TOPIC
         await message_buffer.put((topic, data))
 

@@ -8,6 +8,7 @@ from app.config import settings
 
 logger = logging.getLogger("chat_info")
 
+
 async def get_all_chats_info(client: TelegramClient):
     """
     Возвращает dict {chat_id: {...}} с метаданными о чатах,

@@ -16,6 +16,7 @@ from .config import settings
 
 logger = logging.getLogger("utils")
 
+
 def ensure_dir(path: str):
     """
     Убеждаемся, что каталог существует.
@@ -25,15 +26,18 @@ def ensure_dir(path: str):
     except Exception as e:
         logger.exception(f"Could not create directory {path}: {e}")
 
+
 def get_current_time_moscow():
     return datetime.now(ZoneInfo("Europe/Moscow"))
+
 
 def is_night_time():
     """
     Возвращает True, если текущее время >=22:00 или <06:00 (простая логика).
     """
     current_time = get_current_time_moscow().time()
-    return current_time >= time(22,0) or current_time < time(6,0)
+    return current_time >= time(22, 0) or current_time < time(6, 0)
+
 
 async def human_like_delay(delay_min: float, delay_max: float):
     """
@@ -42,6 +46,7 @@ async def human_like_delay(delay_min: float, delay_max: float):
     delay = random.uniform(delay_min, delay_max)
     logger.debug(f"[human_like_delay] Sleeping ~{delay:.1f}s.")
     await asyncio.sleep(delay)
+
 
 def get_delay_settings(delay_type: str):
     """

@@ -18,7 +18,6 @@ from app.telegram.gaps import GapsManager
 from app.telegram.state_manager import StateManager
 from app.telegram.state import MessageCounter
 
-
 logger = logging.getLogger("main")
 
 MAX_BUFFER_SIZE = 10000
@@ -77,7 +76,6 @@ async def run_tg_ubot():
                 break
             topic, data = item
             if data is not None:
-                # Шлём в Kafka
                 await producer.send_message(topic, data)
             message_buffer.task_done()
             logger.debug("[producer_task] Sent message to Kafka")
@@ -118,9 +116,6 @@ async def run_tg_ubot():
     )
 
     async def gap_scan_response_listener():
-        """
-        Слушаем gap_scan_response, передаём в gaps_manager.
-        """
         async for (topic, data) in gap_consumer.listen():
             if topic == settings.KAFKA_GAP_SCAN_RESPONSE_TOPIC:
                 msg_type = data.get("type")
@@ -147,8 +142,7 @@ async def run_tg_ubot():
 
     gap_filler_coro = asyncio.create_task(gap_filler_task())
 
-    # 10) Регистрируем unified_handler для новых/редактированных сообщений
-    from app.telegram.handlers import register_unified_handler
+    # 10) Регистрируем unified_handler
     register_unified_handler(
         client=client,
         message_buffer=message_buffer,
@@ -157,7 +151,6 @@ async def run_tg_ubot():
         state_mgr=state_mgr
     )
 
-    # Запускаем Telethon
     try:
         logger.info("tg_ubot is running. Press Ctrl+C to stop.")
         await asyncio.gather(
@@ -177,7 +170,6 @@ async def run_tg_ubot():
         backfill_manager.stop()
         stop_event.set()
 
-        # Завершаем producer_task
         await message_buffer.put(None)
         await producer_coro
 

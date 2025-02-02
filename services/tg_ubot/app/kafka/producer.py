@@ -8,6 +8,7 @@ from app.config import settings
 
 logger = logging.getLogger("kafka_producer")
 
+
 class KafkaMessageProducer:
     """
     Асинхронный KafkaProducer (aiokafka).

@@ -1,0 +1,77 @@
+/Users/andreigrishin/Documents/GitHub/NovoInvest
+├── docker-compose.yml
+├── env
+├── requirements
+│   └── requirements.txt
+├── services
+│   ├── __init__.py
+│   ├── bot
+│   │   ├── Dockerfile
+│   │   ├── app
+│   │   │   ├── __init__.py
+│   │   │   ├── config.py
+│   │   │   ├── logger.py
+│   │   │   └── main.py
+│   │   ├── requirements.txt
+│   │   └── wait-for-services.sh
+│   ├── db
+│   │   ├── Dockerfile
+│   │   ├── __init__.py
+│   │   ├── entrypoint.sh
+│   │   ├── init-db
+│   │   │   └── init.sql
+│   │   ├── instructions_consumer.py
+│   │   ├── main.py
+│   │   ├── process_messages.py
+│   │   ├── requirements.txt
+│   │   ├── supervisord.conf
+│   │   └── wait-for-services.sh
+│   ├── nsd_worker
+│   │   ├── Dockerfile
+│   │   ├── app
+│   │   │   ├── __init__.py
+│   │   │   ├── config.py
+│   │   │   ├── main.py
+│   │   │   ├── nsd_worker.py
+│   │   │   └── table_extractor.py
+│   │   ├── requirements.txt
+│   │   └── wait-for-services.sh
+│   ├── tg_ubot
+│   │   ├── Dockerfile
+│   │   ├── __init__.py
+│   │   ├── app
+│   │   │   ├── __init__.py
+│   │   │   ├── config.py
+│   │   │   ├── kafka
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── consumers.py
+│   │   │   │   └── producer.py
+│   │   │   ├── logger.py
+│   │   │   ├── main.py
+│   │   │   ├── process_messages.py
+│   │   │   ├── telegram
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── backfill.py
+│   │   │   │   ├── chat_info.py
+│   │   │   │   ├── gaps.py
+│   │   │   │   ├── handlers.py
+│   │   │   │   ├── state.py
+│   │   │   │   └── state_manager.py
+│   │   │   ├── utils.py
+│   │   │   └── worker.py
+│   │   ├── requirements.txt
+│   │   └── wait-for-it.sh
+│   └── xml_worker
+│       ├── Dockerfile
+│       ├── app
+│       │   ├── __init__.py
+│       │   ├── broker_report_processor.py
+│       │   ├── config.py
+│       │   └── main.py
+│       ├── requirements.txt
+│       └── wait-for-services.sh
+├── tree_structure.txt
+└── utils
+    ├── get structure.py
+    ├── get_chat_id.py
+    └── get_session.py

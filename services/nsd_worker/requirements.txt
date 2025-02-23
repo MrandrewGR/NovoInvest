@@ -1,0 +1,6 @@
+# services/nsd_worker/requirements.txt
+
+# For async HTTP requests & XML parsing
+aiohttp==3.8.3
+lxml==4.9.2
+beautifulsoup4

@@ -1,0 +1,198 @@
+# docker-compose.yml
+
+version: '3.9'  # Make sure we specify a Docker Compose version
+
+services:
+  # ------------------------------------------
+  # Zookeeper
+  # ------------------------------------------
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.0
+    container_name: zookeeper
+    restart: unless-stopped
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+      ZOOKEEPER_INIT_LIMIT: 5
+      ZOOKEEPER_SYNC_LIMIT: 2
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+      - zookeeper_log:/var/lib/zookeeper/log
+    networks:
+      - app_network
+
+  # ------------------------------------------
+  # Kafka
+  # ------------------------------------------
+  kafka:
+    image: confluentinc/cp-kafka:7.4.0
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    restart: unless-stopped
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    networks:
+      - app_network
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  # ------------------------------------------
+  # Postgres
+  # ------------------------------------------
+  postgres:
+    image: postgres:15-alpine
+    container_name: postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: tg_ubot
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./services/db/init-db:/docker-entrypoint-initdb.d  # optional: to run init scripts
+    networks:
+      - app_network
+
+  # ------------------------------------------
+  # tg_ubot microservice
+  # ------------------------------------------
+  tg_ubot:
+    container_name: tg_ubot
+    build:
+      context: ./services/tg_ubot
+      dockerfile: Dockerfile
+    env_file:
+      - /home/dev/app/env/tg_ubot.env
+    environment:
+      DB_NAME: "tg_ubot"
+      TG_UBOT_SCHEMA: "public"
+      SESSION_FILE: /app/session_name.session
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - app_network
+    volumes:
+      - /home/dev/app/session_name.session:/app/session_name.session
+      - tg_ubot_state_volume:/app/data
+
+  # ------------------------------------------
+  # bot microservice
+  # ------------------------------------------
+  bot:
+    container_name: bot
+    build:
+      context: ./services/bot
+    env_file:
+      - /home/dev/app/env/bot.env
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - app_network
+    volumes:
+      - shared_files:/app/files
+
+  # ------------------------------------------
+  # xml_worker microservice
+  # ------------------------------------------
+  xml_worker:
+    container_name: xml_worker
+    build:
+      context: ./services/xml_worker
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - app_network
+    volumes:
+      - shared_files:/app/files
+
+  # ------------------------------------------
+  # nsd_worker microservice
+  # ------------------------------------------
+  nsd_worker:
+    container_name: nsd_worker
+    build:
+      context: ./services/nsd_worker
+      dockerfile: Dockerfile
+    environment:
+      # Kafka variables
+      KAFKA_BROKER: "kafka:9092"
+      KAFKA_CONSUME_TOPIC: "tg_ubot_output"
+      KAFKA_PRODUCE_TOPIC: "nsd_processed_output"
+      KAFKA_GROUP_ID: "nsd_worker_group"
+
+      # --- IMPORTANT: Set DB_NAME so the library won't fail ---
+      DB_NAME: "nsd_worker_db"  # Fix for "Database name 'DB_NAME' is not set" error
+
+      # Postgres details
+      DB_HOST: "postgres"
+      DB_PORT: "5432"
+      DB_USER: "postgres"
+      DB_PASSWORD: "postgres"
+
+      # Extra DB environment used by nsd_worker
+      NSD_WORKER_DB_NAME: "nsd_worker_db"
+      TG_UBOT_DB_NAME: "tg_ubot"
+
+      NSD_PARENT_TABLE: "nsd_parent_table"
+      TG_UBOT_NSD_TABLE: "messages_nsdfeed_ru"
+
+      # Additional config
+      LOG_LEVEL: "DEBUG"
+      POLL_INTERVAL_DB: "30"
+      DELAY_MIN: "3"
+      DELAY_MAX: "15"
+
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - app_network
+    volumes:
+      - shared_files:/app/files
+
+# ------------------------------------------
+# Networks & Volumes
+# ------------------------------------------
+networks:
+  app_network:
+    name: app_network
+    driver: bridge
+
+volumes:
+  zookeeper_data:
+    driver: local
+  zookeeper_log:
+    driver: local
+  kafka_data:
+    driver: local
+  pgdata:
+    driver: local
+  shared_files:
+    driver: local
+  tg_ubot_state_volume:
+    driver: local

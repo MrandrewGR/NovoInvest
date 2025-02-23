@@ -1,4 +1,4 @@
-# services/tg_ubot/app/telegram/handlers.py
+# File: services/tg_ubot/app/telegram/handlers.py
 
 import logging
 import asyncio
@@ -58,36 +58,43 @@ async def process_message_event(event, event_type, message_buffer, chat_id_to_da
             logger.warning(f"No chat_info for chat_id={msg.chat_id}, skipping.")
             return
 
+        # Human-like delay
         dmin, dmax = get_delay_settings("chat")
         await human_like_delay(dmin, dmax)
 
+        # Serialize
         data = serialize_message(msg, event_type, chat_info)
         if not data:
             return
 
-        # Add data to the message buffer for Kafka
+        # Send to Kafka buffer
         topic = settings.UBOT_PRODUCE_TOPIC
         await message_buffer.put((topic, data))
 
-        # Determine the table name for insertion into DB
+        # Determine partitioned table name
         if "chat_username" in chat_info and chat_info["chat_username"]:
             table_suffix = chat_info["chat_username"].lstrip("@").lower()
         else:
             table_suffix = str(msg.chat_id)
         table_name = "messages_" + table_suffix
 
-        # Ensure the parent partitioned table exists and create unique index
-        ensure_partitioned_parent_table(
-            table_name,
-            unique_index_fields=["(data->>'message_id')", "month_part"]
-        )
+        # Ensure the partitioned parent table (no unique index)
+        ensure_partitioned_parent_table(table_name)
 
-        # Insert the record into the partitioned table, checking for duplicates
-        inserted = insert_partitioned_record(table_name, data, deduplicate=True)
+        # Deduplicate only new_message; store every edit as a new row
+        deduplicate = (event_type == "new_message")
+
+        inserted = insert_partitioned_record(table_name, data, deduplicate=deduplicate)
         if inserted:
-            logger.info(f"[unified_handler] Message inserted into DB, msg_id={msg.id} in table {table_name}")
+            logger.info(
+                f"[unified_handler] Message inserted into DB, "
+                f"msg_id={msg.id} in table {table_name}"
+            )
         else:
-            logger.info(f"[unified_handler] Duplicate message, not inserted, msg_id={msg.id} in table {table_name}")
+            logger.info(
+                f"[unified_handler] Duplicate (not inserted), "
+                f"msg_id={msg.id} in table {table_name}"
+            )
 
         logger.info(f"[unified_handler] Processed {event_type} msg_id={msg.id} chat_id={msg.chat_id}")
     except Exception as e:

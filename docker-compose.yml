@@ -1,7 +1,5 @@
 # docker-compose.yml
 
-version: '3.9'  # Make sure we specify a Docker Compose version
-
 services:
   # ------------------------------------------
   # Zookeeper

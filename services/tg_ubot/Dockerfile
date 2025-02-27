@@ -23,6 +23,9 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Устанавливаем mirco_services_data_management из GitHub
+RUN pip install --no-cache-dir --upgrade "git+https://github.com/MrandrewGR/mirco_services_data_management.git"
+
 # Копируем скрипт ожидания Kafka
 COPY wait-for-it.sh /usr/local/bin/wait-for-it.sh
 RUN chmod +x /usr/local/bin/wait-for-it.sh
@@ -31,5 +34,4 @@ RUN chmod +x /usr/local/bin/wait-for-it.sh
 COPY app/ /app/app/
 
 # Запускаем бота, дождавшись Kafka на порту 9092.
-# Обратите внимание, что теперь используем "python -m app.main"
 CMD ["wait-for-it.sh", "kafka:9092", "--", "python", "-m", "app.main"]

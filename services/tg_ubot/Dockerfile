@@ -27,7 +27,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Устанавливаем внешнюю библиотеку tg_ubot из GitHub (конкретный коммит/ветку main)
-RUN pip install --no-cache-dir --upgrade "git+https://github.com/MrandrewGR/mrandrewgr_tg_ubot.git"
+RUN pip install --no-cache-dir --upgrade "git+https://github.com/MrandrewGR/tg_ubot.git"
 
 # Создаём директории для логов, данных и т.д.
 RUN mkdir -p /app/data /app/logs

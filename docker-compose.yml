@@ -67,27 +67,30 @@ services:
   # tg_ubot microservice
   # ------------------------------------------
   tg_ubot:
-    container_name: tg_ubot
-    build:
-      context: ./services/tg_ubot
-      dockerfile: Dockerfile
-    env_file:
-      - /home/dev/app/env/tg_ubot.env
-    environment:
-      DB_NAME: "tg_ubot"
-      TG_UBOT_SCHEMA: "public"
-      SESSION_FILE: /app/session_name.session
-    depends_on:
-      kafka:
-        condition: service_healthy
-      postgres:
-        condition: service_started
-    restart: unless-stopped
-    networks:
-      - app_network
-    volumes:
-      - /home/dev/app/session_name.session:/app/session_name.session
-      - tg_ubot_state_volume:/app/data
+      container_name: tg_ubot
+      build:
+        context: ./services/tg_ubot
+        dockerfile: Dockerfile
+        args:
+          CACHEBUST: 1
+          TG_UBOT_COMMIT_HASH: main  # <-- можно переопределять через build-аргумент
+      env_file:
+        - /home/dev/app/env/tg_ubot.env
+      environment:
+        DB_NAME: "tg_ubot"
+        TG_UBOT_SCHEMA: "public"
+        SESSION_FILE: /app/session_name.session
+      depends_on:
+        kafka:
+          condition: service_healthy
+        postgres:
+          condition: service_started
+      restart: unless-stopped
+      networks:
+        - app_network
+      volumes:
+        - /home/dev/app/session_name.session:/app/session_name.session
+        - tg_ubot_state_volume:/app/data
 
   # ------------------------------------------
   # bot microservice

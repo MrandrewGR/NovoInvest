@@ -1,22 +1,22 @@
-# services/tg_ubot/Dockerfile
+# File: services/tg_ubot/Dockerfile
 
 ARG CACHEBUST=1
 ARG TG_UBOT_COMMIT_HASH=main
 
 FROM python:3.11-slim
 
-# Показываем переданные build-аргументы (для отладки)
+# Показываем, какие ARG были переданы (необязательно, но полезно для отладки)
 RUN echo "Cache bust: ${CACHEBUST}" \
  && echo "Using tg_ubot commit: ${TG_UBOT_COMMIT_HASH}"
 
-# Установка окружения, необходимых пакетов
+# Установка окружения и необходимых системных пакетов
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
     tzdata \
     git \
  && rm -rf /var/lib/apt/lists/*
 
-# Часовой пояс
+# Настройка часового пояса
 ENV TZ=Europe/Moscow
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
@@ -26,17 +26,20 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Устанавливаем внешнюю библиотеку tg_ubot из GitHub (конкретный коммит/ветку main)
-RUN pip install --no-cache-dir --upgrade "git+https://github.com/MrandrewGR/tg_ubot.git"
+# При необходимости устанавливаем внешний репозиторий (закомментировано):
+# RUN pip install --no-cache-dir --upgrade "git+https://github.com/MrandrewGR/tg_ubot.git"
 
-# Создаём директории для логов, данных и т.д.
+# Создаём каталоги для данных и логов; выставляем права
 RUN mkdir -p /app/data /app/logs
 RUN chmod -R 755 /app/data /app/logs
 
-# Копируем скрипт ожидания сервисов (можно оставить как есть)
+# **Ключевой момент**: копируем локальные исходники tg_ubot,
+# чтобы в контейнере был доступен код из app/
+COPY app/ /app/tg_ubot/app/
+
+# Копируем скрипт ожидания сервиса (Kafka) и делаем исполняемым
 COPY wait-for-it.sh /usr/local/bin/wait-for-it.sh
 RUN chmod +x /usr/local/bin/wait-for-it.sh
 
-# По умолчанию запускаем скрипт wait-for-it.sh, чтобы дождаться Kafka, затем
-# запускаем основной модуль tg_ubot (т.к. теперь он есть в установленной либе).
+# По умолчанию запускаем бота, дождавшись Kafka на порту 9092
 CMD ["wait-for-it.sh", "kafka:9092", "--", "python", "-m", "tg_ubot.app.main"]

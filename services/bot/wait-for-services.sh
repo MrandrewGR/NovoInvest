@@ -14,10 +14,10 @@ wait_for_service() {
   echo "$host доступен - продолжаем"
 }
 
-# Ожидание PostgreSQL (host=postgres, port=5432)
-wait_for_service postgres 5432
+# Ожидание PostgreSQL (host=ni-postgres, port=5432)
+wait_for_service ni-postgres 5432
 
-# Ожидание Kafka (host=kafka, port=9092)
-wait_for_service kafka 9092
+# Ожидание Kafka (host=ni-kafka, port=9092)
+wait_for_service ni-kafka 9092
 
 exec "$@"

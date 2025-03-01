@@ -17,58 +17,43 @@ logging.basicConfig(
 logger = logging.getLogger("process_messages")
 
 # Читаем переменные окружения
-DB_HOST = os.environ.get("DB_HOST", "postgres")
+DB_HOST = os.environ.get("DB_HOST", "ni-postgres")
 DB_PORT = os.environ.get("DB_PORT", "5432")
 DB_USER = os.environ.get("DB_USER", "postgres")
 DB_PASSWORD = os.environ.get("DB_PASSWORD", "postgres")
 DB_NAME = os.environ.get("DB_NAME", "tg_ubot")
 
-KAFKA_BOOTSTRAP_SERVERS = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
+KAFKA_BOOTSTRAP_SERVERS = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "ni-kafka:9092")
 
 # Топики
-KAFKA_UBOT_OUTPUT_TOPIC = os.environ.get("KAFKA_UBOT_OUTPUT_TOPIC", "tg_ubot_output")
+KAFKA_UBOT_OUTPUT_TOPIC = os.environ.get("KAFKA_UBOT_OUTPUT_TOPIC", "ni-ubot-out")
 KAFKA_GROUP_ID = os.environ.get("KAFKA_GROUP_ID", "db_consumer_group")
 
 # Новые переменные — топики для gap-scan
-KAFKA_GAP_SCAN_TOPIC = os.environ.get("KAFKA_GAP_SCAN_TOPIC", "gap_scan_request")
-KAFKA_GAP_SCAN_RESPONSE_TOPIC = os.environ.get("KAFKA_GAP_SCAN_RESPONSE_TOPIC", "gap_scan_response")
+KAFKA_GAP_SCAN_TOPIC = os.environ.get("KAFKA_GAP_SCAN_TOPIC", "ni-gap-scan-request")
+KAFKA_GAP_SCAN_RESPONSE_TOPIC = os.environ.get("KAFKA_GAP_SCAN_RESPONSE_TOPIC", "ni-gap-scan-response")
 
 
 def sanitize_table_name(name_uname):
-    """
-    Убирает неалфавитные символы, ставит подчёркивания и т.д.
-    Пример: '@test-chat!' -> 'test_chat'.
-    Также гарантируем, что результат не начинается с цифры/минуса.
-    """
     if not isinstance(name_uname, str):
         name_uname = str(name_uname)
-    # убираем ведущий '@'
     name_uname = name_uname.lstrip('@')
-    # заменяем все не-буквенно-цифровые символы на '_'
     name_uname = re.sub(r'\W+', '_', name_uname)
-    # если вдруг имя начинается не с буквы/underscore — добавим '_'
     if not re.match(r'^[A-Za-z_]', name_uname):
         name_uname = f"_{name_uname}"
-    # PostgreSQL ограничение на длину идентификатора 63 символа
     name_uname = name_uname[:63]
     return name_uname.lower()
 
 
 def get_table_name(name_uname, target_id):
-    """
-    Возвращаем «чистое» имя таблицы с префиксом 'messages_'.
-    Если name_uname задано, используем его через sanitize_table_name.
-    Если нет — формируем вида messages_negXXXXX или messages_XXXX.
-    """
     if name_uname and name_uname != "Unknown":
         sanitized = f"messages_{sanitize_table_name(name_uname)}"
     else:
-        # если нет name_uname, используем числовой идентификатор
         if target_id < 0:
             sanitized = f"messages_neg{abs(target_id)}"
         else:
             sanitized = f"messages_{target_id}"
-    return sanitized.lower()  # Добавляем .lower() для консистентности
+    return sanitized.lower()
 
 
 def create_connection():
@@ -80,7 +65,7 @@ def create_connection():
             password=DB_PASSWORD,
             dbname=DB_NAME
         )
-        conn.autocommit = False  # Можно оставить False, но тогда делать rollback() в except
+        conn.autocommit = False
         return conn
     except Exception as e:
         logger.error(f"Не удалось подключиться к базе данных: {e}")
@@ -152,36 +137,22 @@ def insert_message(conn, table_name, month_part, message_data):
 
 
 def process_single_message(conn, raw_json):
-    """
-    Обработка "обычного" сообщения из tg_ubot_output:
-    - Выясняем, в какую таблицу писать
-    - Убеждаемся, что таблица и нужная партиция существуют
-    - Вставляем запись
-    """
     data = json.loads(raw_json)
     target_id = data.get("target_id")
     month_part = data.get("month_part")
-    name_uname = data.get("name_uname", "Unknown")  # Получаем name_uname из сообщения
+    name_uname = data.get("name_uname", "Unknown")
 
-    # Если не хватает ключей - пропускаем
     if (name_uname is None and target_id is None) or month_part is None:
         logger.warning(f"Пропускаем сообщение без target_id или month_part: {data}")
         return
 
-    table_name = get_table_name(name_uname, target_id)  # Используем name_uname для построения имени таблицы
+    table_name = get_table_name(name_uname, target_id)
     ensure_table_exists(conn, table_name)
     ensure_partition_exists(conn, table_name, month_part)
     insert_message(conn, table_name, month_part, data)
 
 
-###########################################
-# Новый код для "gap_scan_request"
-###########################################
-
 def get_earliest_in_db(conn, chat_id: int, table_name: str):
-    """
-    Возвращаем MIN(message_id) для таблицы данного чата, или None.
-    """
     try:
         with conn.cursor() as cur:
             sql = f"SELECT MIN((data->>'message_id')::bigint) FROM {table_name}"
@@ -189,18 +160,14 @@ def get_earliest_in_db(conn, chat_id: int, table_name: str):
             row = cur.fetchone()
             return row[0] if row and row[0] else None
     except Exception as e:
-        conn.rollback()  # чтобы не зависать в aborted
+        conn.rollback()
         logger.warning(f"Ошибка при get_earliest_in_db(chat_id={chat_id}): {e}")
         return None
 
 
 def get_partitions_for_chat(conn, chat_id: int, table_name: str):
-    """
-    Возвращаем список названий партиций (child tables).
-    """
     try:
         with conn.cursor() as cur:
-            # Увы, нельзя просто передать %s::regclass, придётся делать f-строку:
             sql = f"""
                 SELECT inhrelid::regclass::text
                 FROM pg_inherits
@@ -216,9 +183,6 @@ def get_partitions_for_chat(conn, chat_id: int, table_name: str):
 
 
 def find_missing_ids_in_partition(conn, partition_name: str):
-    """
-    Читаем все message_id, сортируем и ищем "дыры" в последовательности.
-    """
     try:
         with conn.cursor() as cur:
             sql = f"""
@@ -249,25 +213,20 @@ def find_missing_ids_in_partition(conn, partition_name: str):
 
 
 def process_gap_scan_request(conn, message: dict, producer: KafkaProducer):
-    """
-    Получаем chat_id и name_uname, ищем earliest_in_db, собираем "дыры" и шлём ответ.
-    """
     chat_id = message.get("chat_id")
     correlation_id = message.get("correlation_id", "unknown")
-    name_uname = message.get("name_uname", "Unknown")  # Получаем name_uname из сообщения
+    name_uname = message.get("name_uname", "Unknown")
     if not chat_id:
         logger.warning("gap_scan_request без chat_id, пропускаем")
         return
 
-    table_name = get_table_name(name_uname, chat_id)  # Используем name_uname для построения имени таблицы
+    table_name = get_table_name(name_uname, chat_id)
 
-    # Проверяем существование таблицы
     with conn.cursor() as cur:
         cur.execute("SELECT to_regclass(%s);", (table_name,))
         exists = cur.fetchone()[0]
         if not exists:
             logger.warning(f"Таблица {table_name} не существует. Инициируем бэкфилл для чата {chat_id}.")
-            # Отправляем команду на бэкфилл через Kafka
             backfill_request = {
                 "type": "init_backfill",
                 "chat_id": chat_id,
@@ -285,30 +244,19 @@ def process_gap_scan_request(conn, message: dict, producer: KafkaProducer):
         if miss:
             all_missing.extend(miss)
 
-    # Формируем ответ
     response = {
         "type": "gap_scan_response",
         "chat_id": chat_id,
         "correlation_id": correlation_id,
         "earliest_in_db": earliest_db,
-        "missing_ranges": all_missing,  # [(start,end), ...]
+        "missing_ranges": all_missing,
     }
-    # Публикуем в KAFKA_GAP_SCAN_RESPONSE_TOPIC
     producer.send(KAFKA_GAP_SCAN_RESPONSE_TOPIC, value=response)
     logger.info(f"[process_gap_scan_request] Отправили gap_scan_response для chat_id={chat_id}, correlation_id={correlation_id}")
 
 
-###########################################
-# Запуск основного Consumer-a
-###########################################
-
 def run_consumer():
-    """
-    Один KafkaConsumer, подписан сразу на tg_ubot_output (обычные сообщения) и gap_scan_request.
-    """
     conn = create_connection()
-
-    # Создадим KafkaProducer для ответов (gap_scan_response)
     producer = KafkaProducer(
         bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
         value_serializer=lambda v: json.dumps(v).encode('utf-8')
@@ -336,7 +284,6 @@ def run_consumer():
                 continue
 
             if topic == KAFKA_UBOT_OUTPUT_TOPIC:
-                # Обычные сообщения из tg_ubot_output
                 retry_count = 0
                 max_retries = 2
                 while True:
@@ -362,7 +309,6 @@ def run_consumer():
                         break
 
             elif topic == KAFKA_GAP_SCAN_TOPIC:
-                # Пришёл запрос на сканирование "дыр"
                 logger.info(f"[db-process] Получен gap_scan_request: {data}")
                 try:
                     process_gap_scan_request(conn, data, producer)

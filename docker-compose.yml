@@ -4,9 +4,9 @@ services:
   # ------------------------------------------
   # Zookeeper
   # ------------------------------------------
-  zookeeper:
+  ni-zookeeper:
     image: confluentinc/cp-zookeeper:7.4.0
-    container_name: zookeeper
+    container_name: ni-zookeeper
     restart: unless-stopped
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
@@ -22,16 +22,16 @@ services:
   # ------------------------------------------
   # Kafka
   # ------------------------------------------
-  kafka:
+  ni-kafka:
     image: confluentinc/cp-kafka:7.4.0
-    container_name: kafka
+    container_name: ni-kafka
     depends_on:
-      - zookeeper
+      - ni-zookeeper
     restart: unless-stopped
     environment:
       KAFKA_BROKER_ID: 1
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_ZOOKEEPER_CONNECT: ni-zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://ni-kafka:9092
       KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
     volumes:
@@ -47,9 +47,9 @@ services:
   # ------------------------------------------
   # Postgres
   # ------------------------------------------
-  postgres:
+  ni-postgres:
     image: postgres:15-alpine
-    container_name: postgres
+    container_name: ni-postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
@@ -64,45 +64,58 @@ services:
   # ------------------------------------------
   # tg_ubot microservice
   # ------------------------------------------
-  tg_ubot:
-      container_name: tg_ubot
-      build:
-        context: ./services/tg_ubot
-        dockerfile: Dockerfile
-        args:
-          CACHEBUST: 1
-          TG_UBOT_COMMIT_HASH: main  # <-- можно переопределять через build-аргумент
-      env_file:
-        - /home/dev/app/env/tg_ubot.env
-      environment:
-        DB_NAME: "tg_ubot"
-        TG_UBOT_SCHEMA: "public"
-        SESSION_FILE: /app/session_name.session
-      depends_on:
-        kafka:
-          condition: service_healthy
-        postgres:
-          condition: service_started
-      restart: unless-stopped
-      networks:
-        - novoinvest_network
-      volumes:
-        - /home/dev/app/session_name.session:/app/session_name.session
-        - tg_ubot_state_volume:/app/data
+  ni-tg_ubot:
+    container_name: ni-tg_ubot
+    build:
+      context: ./services/tg_ubot
+      dockerfile: Dockerfile
+      args:
+        CACHEBUST: 1
+        TG_UBOT_COMMIT_HASH: main
+    env_file:
+      - /home/dev/app/env/tg_ubot.env
+    environment:
+      DB_NAME: "tg_ubot"
+      TG_UBOT_SCHEMA: "public"
+      SESSION_FILE: /app/session_name.session
+      # -- Kafka:
+      KAFKA_BOOTSTRAP_SERVERS: "ni-kafka:9092"
+      KAFKA_TOPIC: "ni-bot-in"
+      KAFKA_RESULT_TOPIC: "ni-isin-out"
+    depends_on:
+      ni-kafka:
+        condition: service_healthy
+      ni-postgres:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - novoinvest_network
+    volumes:
+      - /home/dev/app/session_name.session:/app/session_name.session
+      - tg_ubot_state_volume:/app/data
 
   # ------------------------------------------
   # bot microservice
   # ------------------------------------------
-  bot:
-    container_name: bot
+  ni-bot:
+    container_name: ni-bot
     build:
       context: ./services/bot
     env_file:
       - /home/dev/app/env/bot.env
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: "ni-kafka:9092"
+      KAFKA_TOPIC: "ni-bot-in"
+      KAFKA_RESULT_TOPIC: "ni-isin-out"
+      DB_HOST: "ni-postgres"
+      DB_PORT: "5432"
+      DB_USER: "postgres"
+      DB_PASSWORD: "postgres"
+      DB_NAME: "tg_ubot"
     depends_on:
-      kafka:
+      ni-kafka:
         condition: service_healthy
-      postgres:
+      ni-postgres:
         condition: service_started
     restart: unless-stopped
     networks:
@@ -113,14 +126,22 @@ services:
   # ------------------------------------------
   # xml_worker microservice
   # ------------------------------------------
-  xml_worker:
-    container_name: xml_worker
+  ni-xml_worker:
+    container_name: ni-xml_worker
     build:
       context: ./services/xml_worker
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: "ni-kafka:9092"
+      # reusing the same variable name from code ("KAFKA_TOPIC") for the consumer:
+      KAFKA_TOPIC: "ni-bot-in"
+      # the produce topic:
+      UBOT_PRODUCE_TOPIC: "ni-isin-out"
+      DB_HOST: "ni-postgres"
+      DB_PORT: "5432"
     depends_on:
-      kafka:
+      ni-kafka:
         condition: service_healthy
-      postgres:
+      ni-postgres:
         condition: service_started
     restart: unless-stopped
     networks:
@@ -131,23 +152,20 @@ services:
   # ------------------------------------------
   # nsd_worker microservice
   # ------------------------------------------
-  nsd_worker:
-    container_name: nsd_worker
+  ni-nsd_worker:
+    container_name: ni-nsd_worker
     build:
       context: ./services/nsd_worker
       dockerfile: Dockerfile
     environment:
       # Kafka variables
-      KAFKA_BROKER: "kafka:9092"
-      KAFKA_CONSUME_TOPIC: "tg_ubot_output"
-      KAFKA_PRODUCE_TOPIC: "nsd_processed_output"
+      KAFKA_BROKER: "ni-kafka:9092"
+      KAFKA_CONSUME_TOPIC: "ni-ubot-out"
+      KAFKA_PRODUCE_TOPIC: "ni-nsd-out"
       KAFKA_GROUP_ID: "nsd_worker_group"
 
-      # --- IMPORTANT: Set DB_NAME so the library won't fail ---
-      DB_NAME: "nsd_worker_db"  # Fix for "Database name 'DB_NAME' is not set" error
-
-      # Postgres details
-      DB_HOST: "postgres"
+      # DB variables
+      DB_HOST: "ni-postgres"
       DB_PORT: "5432"
       DB_USER: "postgres"
       DB_PASSWORD: "postgres"
@@ -159,22 +177,55 @@ services:
       NSD_PARENT_TABLE: "nsd_parent_table"
       TG_UBOT_NSD_TABLE: "messages_nsdfeed_ru"
 
-      # Additional config
       LOG_LEVEL: "DEBUG"
       POLL_INTERVAL_DB: "30"
       DELAY_MIN: "3"
       DELAY_MAX: "15"
 
     depends_on:
-      kafka:
+      ni-kafka:
         condition: service_healthy
-      postgres:
+      ni-postgres:
         condition: service_started
     restart: unless-stopped
     networks:
       - novoinvest_network
     volumes:
       - shared_files:/app/files
+
+  # ------------------------------------------
+  # db service (the "consumer" logic)
+  # ------------------------------------------
+  db-service:
+    container_name: ni-db-service
+    build:
+      context: ./services/db
+    environment:
+      DB_HOST: "ni-postgres"
+      DB_PORT: "5432"
+      DB_USER: "postgres"
+      DB_PASSWORD: "postgres"
+      DB_NAME: "tg_ubot"
+
+      # Kafka:
+      KAFKA_BOOTSTRAP_SERVERS: "ni-kafka:9092"
+      # Additional topics used inside process_messages.py or instructions_consumer.py
+      KAFKA_TG_INSTRUCTIONS: "ni-tg-instructions"
+      KAFKA_UBOT_OUTPUT_TOPIC: "ni-ubot-out"
+      KAFKA_GAP_SCAN_TOPIC: "ni-gap-scan-request"
+      KAFKA_GAP_SCAN_RESPONSE_TOPIC: "ni-gap-scan-response"
+
+    depends_on:
+      ni-kafka:
+        condition: service_healthy
+      ni-postgres:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - novoinvest_network
+    volumes:
+      - shared_files:/app/files
+
 
 # ------------------------------------------
 # Networks & Volumes

@@ -1,11 +1,9 @@
-# File location: ./services/xml_worker/wait-for-services.sh
-
 #!/usr/bin/env bash
 # Скрипт ожидания, пока Kafka станет доступна.
 
 set -e
 
-HOST="${KAFKA_HOST:-kafka}"
+HOST="${KAFKA_HOST:-ni-kafka}"
 PORT="${KAFKA_PORT:-9092}"
 
 echo "Ожидаем доступности Kafka на ${HOST}:${PORT}..."

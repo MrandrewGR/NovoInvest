@@ -1,4 +1,5 @@
 # services/db/instructions_consumer.py
+import os
 import json
 import asyncio
 import logging
@@ -14,15 +15,16 @@ class TGInstructionsConsumer:
 
     async def initialize(self):
         loop = asyncio.get_running_loop()
+        topic_name = os.getenv("KAFKA_TG_INSTRUCTIONS", "ni-tg-instructions")
         # Запускаем consumer в отдельном потоке (run_in_executor)
         self.consumer = await loop.run_in_executor(None, lambda: KafkaConsumer(
-            "tg_instructions",  # название топика
+            topic_name,
             bootstrap_servers=[settings.KAFKA_BOOTSTRAP_SERVERS],
             auto_offset_reset='earliest',
             enable_auto_commit=True,
             group_id='tg_instructions_group'
         ))
-        logger.info("TGInstructionsConsumer инициализирован, слушаем tg_instructions.")
+        logger.info(f"TGInstructionsConsumer инициализирован, слушаем топик {topic_name}.")
 
     async def listen(self):
         while True:

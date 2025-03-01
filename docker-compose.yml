@@ -17,7 +17,7 @@ services:
       - zookeeper_data:/var/lib/zookeeper/data
       - zookeeper_log:/var/lib/zookeeper/log
     networks:
-      - app_network
+      - novoinvest_network
 
   # ------------------------------------------
   # Kafka
@@ -37,7 +37,7 @@ services:
     volumes:
       - kafka_data:/var/lib/kafka/data
     networks:
-      - app_network
+      - novoinvest_network
     healthcheck:
       test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
       interval: 15s
@@ -59,7 +59,7 @@ services:
       - pgdata:/var/lib/postgresql/data
       - ./services/db/init-db:/docker-entrypoint-initdb.d  # optional: to run init scripts
     networks:
-      - app_network
+      - novoinvest_network
 
   # ------------------------------------------
   # tg_ubot microservice
@@ -85,7 +85,7 @@ services:
           condition: service_started
       restart: unless-stopped
       networks:
-        - app_network
+        - novoinvest_network
       volumes:
         - /home/dev/app/session_name.session:/app/session_name.session
         - tg_ubot_state_volume:/app/data
@@ -106,7 +106,7 @@ services:
         condition: service_started
     restart: unless-stopped
     networks:
-      - app_network
+      - novoinvest_network
     volumes:
       - shared_files:/app/files
 
@@ -124,7 +124,7 @@ services:
         condition: service_started
     restart: unless-stopped
     networks:
-      - app_network
+      - novoinvest_network
     volumes:
       - shared_files:/app/files
 
@@ -172,7 +172,7 @@ services:
         condition: service_started
     restart: unless-stopped
     networks:
-      - app_network
+      - novoinvest_network
     volumes:
       - shared_files:/app/files
 
@@ -180,8 +180,8 @@ services:
 # Networks & Volumes
 # ------------------------------------------
 networks:
-  app_network:
-    name: app_network
+  novoinvest_network:
+    name: novoinvest_network
     driver: bridge
 
 volumes:

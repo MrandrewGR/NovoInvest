@@ -14,8 +14,8 @@ services:
       ZOOKEEPER_INIT_LIMIT: 5
       ZOOKEEPER_SYNC_LIMIT: 2
     volumes:
-      - zookeeper_data:/var/lib/zookeeper/data
-      - zookeeper_log:/var/lib/zookeeper/log
+      - ni_zookeeper_data:/var/lib/zookeeper/data
+      - ni_zookeeper_log:/var/lib/zookeeper/log
     networks:
       - novoinvest_network
 
@@ -35,7 +35,7 @@ services:
       KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
     volumes:
-      - kafka_data:/var/lib/kafka/data
+      - ni_kafka_data:/var/lib/kafka/data
     networks:
       - novoinvest_network
     healthcheck:
@@ -56,7 +56,7 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: tg_ubot
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - ni_pgdata:/var/lib/postgresql/data
       - ./services/db/init-db:/docker-entrypoint-initdb.d  # optional: to run init scripts
     networks:
       - novoinvest_network
@@ -92,7 +92,7 @@ services:
       - novoinvest_network
     volumes:
       - /home/dev/app/session_name.session:/app/session_name.session
-      - tg_ubot_state_volume:/app/data
+      - ni_tg_ubot_state_volume:/app/data
 
   # ------------------------------------------
   # bot microservice
@@ -121,7 +121,7 @@ services:
     networks:
       - novoinvest_network
     volumes:
-      - shared_files:/app/files
+      - ni_shared_files:/app/files
 
   # ------------------------------------------
   # xml_worker microservice
@@ -147,7 +147,7 @@ services:
     networks:
       - novoinvest_network
     volumes:
-      - shared_files:/app/files
+      - ni_shared_files:/app/files
 
   # ------------------------------------------
   # nsd_worker microservice
@@ -191,7 +191,7 @@ services:
     networks:
       - novoinvest_network
     volumes:
-      - shared_files:/app/files
+      - ni_shared_files:/app/files
 
   # ------------------------------------------
   # db service (the "consumer" logic)
@@ -224,7 +224,7 @@ services:
     networks:
       - novoinvest_network
     volumes:
-      - shared_files:/app/files
+      - ni_shared_files:/app/files
 
 
 # ------------------------------------------
@@ -236,15 +236,15 @@ networks:
     driver: bridge
 
 volumes:
-  zookeeper_data:
+  ni_zookeeper_data:
     driver: local
-  zookeeper_log:
+  ni_zookeeper_log:
     driver: local
-  kafka_data:
+  ni_kafka_data:
     driver: local
-  pgdata:
+  ni_pgdata:
     driver: local
-  shared_files:
+  ni_shared_files:
     driver: local
-  tg_ubot_state_volume:
+  ni_tg_ubot_state_volume:
     driver: local

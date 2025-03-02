@@ -237,14 +237,25 @@ networks:
 
 volumes:
   ni_zookeeper_data:
+    name: ni_zookeeper_data
     driver: local
+
   ni_zookeeper_log:
+    name: ni_zookeeper_log
     driver: local
+
   ni_kafka_data:
+    name: ni_kafka_data
     driver: local
+
   ni_pgdata:
+    name: ni_pgdata
     driver: local
+
   ni_shared_files:
+    name: ni_shared_files
     driver: local
+
   ni_tg_ubot_state_volume:
+    name: ni_tg_ubot_state_volume
     driver: local
